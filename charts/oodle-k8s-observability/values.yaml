@@ -72,9 +72,6 @@ auto-instrumentation:
       OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: "" # Oodle Metrics Endpoint
       OTEL_EXPORTER_OTLP_HEADERS: "" # Oodle API Key
       BEYLA_KUBE_CLUSTER_NAME: "" # Kubernetes Cluster Name
-      BEYLA_NAME_RESOLVER_SOURCES: "k8s,dns"
-      OTEL_METRIC_EXPORT_TIMEOUT: 120000
-      BEYLA_PROMETHEUS_PORT: 0
 
 # Configuration for Vector Agent
 vector-agent:
