@@ -1,0 +1,35 @@
+🎉 Oodle Kubernetes Observability has been installed successfully!
+
+Components installed:
+{{- if .Values.monitoring.enabled }}
+✅ Metrics
+{{- else }}
+❌ Metrics - Disabled
+{{- end }}
+{{- if index .Values "auto-instrumentation" "enabled" }}
+✅ eBPF Powered APM + Service Graph
+{{- else }}
+❌ eBPF Powered APM + Service Graph - Disabled
+{{- end }}
+{{- if and (index .Values "vector-agent" "enabled") (index .Values "vector-aggregator" "enabled") }}
+✅ Logs
+{{- else }}
+❌ Logs - Disabled
+{{- end }}
+{{- if index .Values "event-exporter" "enabled" }}
+✅ Kubernetes Events
+{{- else }}
+❌ Kubernetes Events - Disabled
+{{- end }}
+
+
+🔍 To check the status of your installation:
+
+   helm list -n {{ .Release.Namespace }}
+   kubectl get pods -n {{ .Release.Namespace }}
+
+📚 For more information:
+   - Documentation: https://docs.oodle.ai
+   - GitHub: https://github.com/oodle-ai/oodle-k8s-observability-helm
+
+Happy monitoring! 🚀 
