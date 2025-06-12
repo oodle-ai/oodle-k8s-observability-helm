@@ -4,7 +4,7 @@ dependencies:
   version: 1.2.1
 - name: oodle-k8s-auto-instrumentation
   repository: https://oodle-ai.github.io/helm-charts
-  version: 1.2.8
+  version: 1.2.9
 - name: vector
   repository: https://helm.vector.dev
   version: 0.43.0
@@ -14,5 +14,5 @@ dependencies:
 - name: kubernetes-event-exporter
   repository: oci://registry-1.docker.io/bitnamicharts
   version: 3.5.5
-digest: sha256:23c5aefb2ae9096d7527bba0b7ba4ad5d007eb7ea449d9ea49ca439ea809ded2
-generated: "2025-06-11T16:49:25.48292+05:30"
+digest: sha256:a071e2e58a854790bd48b941ded25c75d4b0d6eaea2e6abf7c9fed714039fe98
+generated: "2025-06-12T12:38:44.583836+05:30"
