@@ -1,0 +1,184 @@
+# Configuration for k8s-monitoring chart (using alias: monitoring)
+monitoring:
+  enabled: true
+  cluster:
+    name: "" # Kubernetes Cluster Name
+  
+  externalServices:
+    prometheus:
+      host: ""  # Oodle Metrics Host
+      apiKey: "" # Oodle API Key
+      writeEndpoint: "" # Oodle Prometheus Metrics Write Endpoint
+
+  metrics:
+    alloy:
+      metricsTuning:
+        useIntegrationAllowList: true
+    kube-state-metrics:
+      metricsTuning:
+        useDefaultAllowList: false
+    node-exporter:
+      metricsTuning:
+        useDefaultAllowList: false
+    cadvisor:
+      metricsTuning:
+        useDefaultAllowList: false
+
+  kube-state-metrics:
+    enabled: true
+
+  prometheus-node-exporter:
+    enabled: true
+    
+  prometheus-operator-crds:
+    enabled: false
+
+  logs:
+    enabled: false
+    pod_logs:
+      enabled: false
+    cluster_events:
+      enabled: false
+
+  events:
+    enabled: false
+  traces:
+    enabled: false
+  profiles:
+    enabled: false
+  cluster_events:
+    enabled: false
+  receivers:
+    grpc:
+      enabled: false
+    http:
+      enabled: false
+    grafanaCloudMetrics:
+      enabled: false
+    deployGrafanaAgentService: false
+
+  test:
+    enabled: false
+  configAnalysis:
+    enabled: false
+  opencost:
+    enabled: false
+
+# Configuration for oodle-k8s-auto-instrumentation chart (using alias: auto-instrumentation)
+auto-instrumentation:
+  enabled: true
+  beyla:
+    env:
+      OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: "" # Oodle Metrics Endpoint
+      OTEL_EXPORTER_OTLP_HEADERS: "" # Oodle API Key
+      BEYLA_KUBE_CLUSTER_NAME: "" # Kubernetes Cluster Name
+
+# Configuration for Vector Agent
+vector-agent:
+  enabled: true
+  role: Agent
+
+  env:
+    - name: CLUSTER_NAME
+      value: "" # Kubernetes Cluster Name
+
+  customConfig:
+    data_dir: /vector-data-dir
+    api:
+      enabled: true
+      address: 127.0.0.1:8686
+      playground: false
+
+    sources:
+      kubernetes_logs:
+        type: kubernetes_logs
+
+    transforms:
+      add_cluster_name:
+        type: remap
+        inputs:
+          - kubernetes_logs
+        source: |
+          if !exists(.cluster) {
+            .cluster = "${CLUSTER_NAME}"
+          }
+          .
+
+    sinks:
+      vector:
+        type: vector
+        inputs:
+          - add_cluster_name
+        address: "{{ .Release.Name }}-vector-aggregator:6000"
+
+# Configuration for Vector Aggregator  
+vector-aggregator:
+  enabled: true
+  env:
+    - name: OODLE_INSTANCE
+      value: "" # Oodle Instance
+    - name: OODLE_API_KEY
+      value: "" # Oodle API Key
+    - name: OODLE_LOGS_HOST
+      value: "" # Oodle Logs Host
+
+  customConfig:
+    data_dir: /vector-data-dir
+    api:
+      enabled: true
+      address: 127.0.0.1:8686
+      playground: false
+
+    sources:
+      vector:
+        address: 0.0.0.0:6000
+        type: vector
+    
+    sinks:
+      oodle:
+        type: http
+        inputs:
+          - vector
+        uri: "${OODLE_LOGS_HOST}/ingest/v1/logs"
+        encoding:
+          codec: json
+        compression: gzip
+        headers:
+          X-OODLE-INSTANCE: "${OODLE_INSTANCE}"
+          X-API-KEY: "${OODLE_API_KEY}"
+          X-OODLE-LOG-SOURCE: "vector"
+        request:
+          retry_attempts: 3
+          timeout_secs: 60
+
+# Configuration for Kubernetes Event Exporter
+event-exporter:
+  enabled: true
+  extraEnvVars:
+    - name: CLUSTER_NAME
+      value: "" # Kubernetes Cluster Name
+    - name: OODLE_INSTANCE
+      value: "" # Oodle Instance
+    - name: OODLE_API_KEY
+      value: "" # Oodle API Key
+    - name: OODLE_LOGS_HOST
+      value: "" # Oodle Logs Host
+
+  config:
+    clusterName: "${CLUSTER_NAME}"
+    logLevel: info
+    logFormat: pretty
+    route:
+      routes:
+        - match:
+            - receiver: "oodle"
+
+    receivers:
+      - name: "oodle"
+        webhook:
+          endpoint: "${OODLE_LOGS_HOST}/ingest/v1/logs"
+          headers:
+            X-OODLE-INSTANCE: "${OODLE_INSTANCE}"
+            X-API-KEY: "${OODLE_API_KEY}"
+            X-OODLE-LOG-SOURCE: "event-exporter"
+
