@@ -27,7 +27,7 @@ monitoring:
   kube-state-metrics:
     enabled: true
 
-  prometheus-node-exporter:
+  node-exporter:
     enabled: true
     
   prometheus-operator-crds:
