@@ -27,7 +27,7 @@ monitoring:
   kube-state-metrics:
     enabled: true
 
-  node-exporter:
+  prometheus-node-exporter:
     enabled: true
     
   prometheus-operator-crds:
@@ -94,10 +94,17 @@ vector-agent:
         type: kubernetes_logs
 
     transforms:
+      drop_old_logs:
+        type: filter
+        inputs:
+          - kubernetes_logs
+        condition: |
+          to_unix_timestamp(now()) - 24*3600 < to_unix_timestamp(timestamp!(.timestamp))
+
       add_cluster_name:
         type: remap
         inputs:
-          - kubernetes_logs
+          - drop_old_logs
         source: |
           if !exists(.cluster) {
             .cluster = "${CLUSTER_NAME}"
