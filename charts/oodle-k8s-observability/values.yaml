@@ -1,6 +1,10 @@
 # Configuration for kube-state-metrics chart
 kube-state-metrics:
   enabled: true
+  
+  # Override labels to make this instance uniquely identifiable
+  customLabels:
+    app: oodle-kube-state-metrics
 
 # Configuration for prometheus-node-exporter chart  
 prometheus-node-exporter:
@@ -10,6 +14,10 @@ prometheus-node-exporter:
   service:
     port: 9301
     targetPort: 9301
+    
+  # Override labels to make this instance uniquely identifiable
+  commonLabels:
+    app: oodle-node-exporter
 
 # Configuration for Metrics
 vmagent:
@@ -20,22 +28,10 @@ vmagent:
   # Number of vmagent replicas for sharding
   replicaCount: 2
 
-  # Enable sharding across replicas
-  extraArgs:
-    promscrape.cluster.membersCount: "2"
-    promscrape.cluster.replicationFactor: "1"
-    # Each replica will get its memberNum from environment variable
-    promscrape.cluster.memberNum: "$(MEMBER_NUM)"
-
-  # Environment variables for sharding - pod ordinal will be set automatically
-  env:
-    - name: MEMBER_NUM
-      valueFrom:
-        fieldRef:
-          fieldPath: metadata.labels['apps.kubernetes.io/pod-index']
-
-  # StatefulSet configuration for parallel deployment
+  # StatefulSet configuration for sharding
   statefulSet:
+    clusterMode: true
+    replicationFactor: 1
     spec:
       podManagementPolicy: "Parallel"
 
@@ -145,23 +141,31 @@ vmagent:
             replacement: $1
         honor_timestamps: false
 
-      # Scrape kube-state-metrics
+      # Scrape kube-state-metrics (only the one deployed by this chart)
       - job_name: kube-state-metrics
         kubernetes_sd_configs:
           - role: endpoints
         relabel_configs:
+          # Filter by custom label to ensure we only scrape our deployed instance
+          - source_labels: [__meta_kubernetes_service_label_app]
+            action: keep
+            regex: "oodle-kube-state-metrics"
           - source_labels: [__meta_kubernetes_service_name]
             action: keep
-            regex: ".*-kube-state-metrics"
+            regex: ".*kube-state-metrics.*"
           - source_labels: [__meta_kubernetes_endpoint_port_name]
             action: keep
             regex: http
 
-      # Scrape node-exporter
+      # Scrape node-exporter (only the one deployed by this chart)
       - job_name: node-exporter
         kubernetes_sd_configs:
           - role: endpoints
         relabel_configs:
+          # Filter by custom label to ensure we only scrape our deployed instance
+          - source_labels: [__meta_kubernetes_service_label_app]
+            action: keep
+            regex: "oodle-node-exporter"
           - source_labels: [__meta_kubernetes_service_name]
             action: keep
             regex: ".*node-exporter.*"
