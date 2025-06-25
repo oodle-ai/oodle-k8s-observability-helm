@@ -1,76 +1,220 @@
-# Configuration for k8s-monitoring chart (using alias: monitoring)
-monitoring:
+# Configuration for kube-state-metrics chart
+kube-state-metrics:
   enabled: true
-  cluster:
-    name: "" # Kubernetes Cluster Name
+
+# Configuration for prometheus-node-exporter chart  
+prometheus-node-exporter:
+  enabled: true
   
-  externalServices:
-    prometheus:
-      host: ""  # Oodle Metrics Host
-      apiKey: "" # Oodle API Key
-      writeEndpoint: "" # Oodle Prometheus Metrics Write Endpoint
+  # Use custom port to avoid conflicts with other node exporters
+  service:
+    port: 9301
+    targetPort: 9301
 
-  metrics:
-    alloy:
-      metricsTuning:
-        useIntegrationAllowList: true
-    kube-state-metrics:
-      metricsTuning:
-        useDefaultAllowList: false
-    node-exporter:
-      metricsTuning:
-        useDefaultAllowList: false
-    cadvisor:
-      metricsTuning:
-        useDefaultAllowList: false
+# Configuration for Metrics
+vmagent:
+  enabled: true
 
-  kube-state-metrics:
+  mode: statefulSet
+
+  # Number of vmagent replicas for sharding
+  replicaCount: 2
+
+  # Enable sharding across replicas
+  extraArgs:
+    promscrape.cluster.membersCount: "2"
+    promscrape.cluster.replicationFactor: "1"
+    # Each replica will get its memberNum from environment variable
+    promscrape.cluster.memberNum: "$(MEMBER_NUM)"
+
+  # Environment variables for sharding - pod ordinal will be set automatically
+  env:
+    - name: MEMBER_NUM
+      valueFrom:
+        fieldRef:
+          fieldPath: metadata.labels['apps.kubernetes.io/pod-index']
+
+  # StatefulSet configuration for parallel deployment
+  statefulSet:
+    spec:
+      podManagementPolicy: "Parallel"
+
+  # Persistent volume for each replica to store scrape queue
+  persistentVolume:
     enabled: true
+    size: 20Gi
+    storageClass: ""
 
-  prometheus-node-exporter:
+  # Resource limits for each replica
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 4Gi
+    requests:
+      cpu: 100m
+      memory: 512Mi
+
+  # Pod disruption budget to ensure availability during updates
+  podDisruptionBudget:
     enabled: true
-    
-  prometheus-operator-crds:
-    enabled: false
+    minAvailable: 1
 
-  logs:
-    enabled: false
-    pod_logs:
-      enabled: false
-    cluster_events:
-      enabled: false
+  # Add prometheus annotations for self-discovery
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8429"
+    prometheus.io/path: "/metrics"
 
-  events:
-    enabled: false
-  traces:
-    enabled: false
-  profiles:
-    enabled: false
-  cluster_events:
-    enabled: false
-  receivers:
-    grpc:
-      enabled: false
-    http:
-      enabled: false
-    grafanaCloudMetrics:
-      enabled: false
-    deployGrafanaAgentService: false
+  # Remote write configuration for sending metrics to Oodle
+  remoteWrite:
+    - url: "" # Oodle Prometheus Metrics Write Endpoint
+      headers: "X-API-KEY: <>" # Oodle API Key
 
-  test:
-    enabled: false
-  configAnalysis:
-    enabled: false
-  opencost:
-    enabled: false
+  # -- Extra scrape configs that will be appended to `config`
+  extraScrapeConfigs: [ ]
+
+  # Scrape configuration for collecting metrics
+  config:
+    global:
+      scrape_interval: 60s
+      scrape_timeout: 1m
+      external_labels:
+        cluster: "" # Kubernetes Cluster Name
+
+    scrape_configs:
+      # Note: vmagent scrapes itself via prometheus.io/scrape annotation
+      # discovered by kubernetes-pods job below
+
+      # Scrape Kubernetes API servers
+      - job_name: kubernetes-apiservers
+        kubernetes_sd_configs:
+          - role: endpoints
+        scheme: https
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          insecure_skip_verify: true
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+            action: keep
+            regex: default;kubernetes;https
+
+      # Scrape Kubelet metrics from each node using direct mode
+      - job_name: kubernetes-nodes
+        kubernetes_sd_configs:
+          - role: node
+        scheme: https
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          insecure_skip_verify: true
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        metrics_path: /metrics
+        relabel_configs:
+          - action: labelmap
+            regex: __meta_kubernetes_node_label_(.+)
+          - source_labels: [__address__]
+            regex: ([^:]+):(.*)
+            target_label: __address__
+            replacement: $1:10250
+          # Set instance to node name (hostname) instead of IP
+          - source_labels: [__meta_kubernetes_node_name]
+            target_label: instance
+            replacement: $1
+        honor_timestamps: false
+
+      # Scrape cAdvisor metrics (container metrics) using direct mode
+      - job_name: kubernetes-nodes-cadvisor
+        kubernetes_sd_configs:
+          - role: node
+        scheme: https
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          insecure_skip_verify: true
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        metrics_path: /metrics/cadvisor
+        relabel_configs:
+          - action: labelmap
+            regex: __meta_kubernetes_node_label_(.+)
+          - source_labels: [__address__]
+            regex: ([^:]+):(.*)
+            target_label: __address__
+            replacement: $1:10250
+          # Set instance to node name (hostname) instead of IP
+          - source_labels: [__meta_kubernetes_node_name]
+            target_label: instance
+            replacement: $1
+        honor_timestamps: false
+
+      # Scrape kube-state-metrics
+      - job_name: kube-state-metrics
+        kubernetes_sd_configs:
+          - role: endpoints
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_name]
+            action: keep
+            regex: ".*-kube-state-metrics"
+          - source_labels: [__meta_kubernetes_endpoint_port_name]
+            action: keep
+            regex: http
+
+      # Scrape node-exporter
+      - job_name: node-exporter
+        kubernetes_sd_configs:
+          - role: endpoints
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_name]
+            action: keep
+            regex: ".*node-exporter.*"
+          - source_labels: [__meta_kubernetes_endpoint_port_name]
+            action: keep
+            regex: metrics
+          - source_labels: [__meta_kubernetes_pod_node_name]
+            target_label: instance
+            replacement: $1
+
+      # Scrape pods with prometheus.io/scrape: true annotation
+      - job_name: kubernetes-pods
+        kubernetes_sd_configs:
+          - role: pod
+        relabel_configs:
+          - action: drop
+            source_labels: [__meta_kubernetes_pod_container_init]
+            regex: true
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels:
+              [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            target_label: __address__
+          - action: labelmap
+            regex: __meta_kubernetes_pod_label_(.+)
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+          - source_labels: [__meta_kubernetes_pod_container_name]
+            target_label: container
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: namespace
+          - source_labels: [__meta_kubernetes_pod_node_name]
+            action: replace
+            target_label: node
+          # Set cardinality limit for auto-instrumentation targets
+          - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+            regex: ".*beyla.*"
+            target_label: __series_limit__
+            replacement: "1000000"
 
 # Configuration for oodle-k8s-auto-instrumentation chart (using alias: auto-instrumentation)
 auto-instrumentation:
   enabled: true
   beyla:
     env:
-      OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: "" # Oodle Metrics Endpoint
-      OTEL_EXPORTER_OTLP_HEADERS: "" # Oodle API Key
       BEYLA_KUBE_CLUSTER_NAME: "" # Kubernetes Cluster Name
 
 # Configuration for Vector Agent
@@ -188,4 +332,3 @@ event-exporter:
             X-OODLE-INSTANCE: "${OODLE_INSTANCE}"
             X-API-KEY: "${OODLE_API_KEY}"
             X-OODLE-LOG-SOURCE: "event-exporter"
-

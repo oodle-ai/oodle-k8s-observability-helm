@@ -22,11 +22,6 @@ keywords:
   - instrumentation
 
 dependencies:
-  - name: k8s-monitoring
-    version: "^1.0.0"
-    repository: "https://oodle-ai.github.io/helm-charts"
-    alias: monitoring
-    condition: monitoring.enabled
   - name: oodle-k8s-auto-instrumentation
     version: "^1.0.0"
     repository: "https://oodle-ai.github.io/helm-charts"
@@ -46,4 +41,19 @@ dependencies:
     version: "^3.0.0"
     repository: "oci://registry-1.docker.io/bitnamicharts"
     alias: event-exporter
-    condition: event-exporter.enabled 
+    condition: event-exporter.enabled
+  - name: victoria-metrics-agent
+    version: "^0.23.0"
+    repository: "https://victoriametrics.github.io/helm-charts/"
+    alias: vmagent
+    condition: vmagent.enabled
+  - name: kube-state-metrics
+    version: "^5.0.0"
+    repository: "https://prometheus-community.github.io/helm-charts"
+    alias: kube-state-metrics
+    condition: kube-state-metrics.enabled
+  - name: prometheus-node-exporter
+    version: "^4.0.0"
+    repository: "https://prometheus-community.github.io/helm-charts"
+    alias: prometheus-node-exporter
+    condition: prometheus-node-exporter.enabled 

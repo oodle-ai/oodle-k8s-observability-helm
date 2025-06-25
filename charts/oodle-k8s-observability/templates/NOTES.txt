@@ -1,7 +1,7 @@
 🎉 Oodle Kubernetes Observability has been installed successfully!
 
 Components installed:
-{{- if .Values.monitoring.enabled }}
+{{- if .Values.vmagent.enabled }}
 ✅ Metrics
 {{- else }}
 ❌ Metrics - Disabled
