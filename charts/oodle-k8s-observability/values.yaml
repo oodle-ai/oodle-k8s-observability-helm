@@ -66,6 +66,9 @@ vmagent:
     - url: "" # Oodle Prometheus Metrics Write Endpoint
       headers: "X-API-KEY: <>" # Oodle API Key
 
+  extraArgs:
+    promscrape.suppressDuplicateScrapeTargetErrors: "true"
+
   # -- Extra scrape configs that will be appended to `config`
   extraScrapeConfigs: [ ]
 
