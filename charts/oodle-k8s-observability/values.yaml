@@ -65,6 +65,7 @@ vmagent:
   remoteWrite:
     - url: "" # Oodle Prometheus Metrics Write Endpoint
       headers: "X-API-KEY: <>" # Oodle API Key
+      forcePromProto: true
 
   extraArgs:
     promscrape.suppressDuplicateScrapeTargetErrors: "true"
