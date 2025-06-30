@@ -65,10 +65,10 @@ vmagent:
   remoteWrite:
     - url: "" # Oodle Prometheus Metrics Write Endpoint
       headers: "X-API-KEY: <>" # Oodle API Key
-      forcePromProto: true
 
   extraArgs:
     promscrape.suppressDuplicateScrapeTargetErrors: "true"
+    remoteWrite.forcePromProto: "true"
 
   # -- Extra scrape configs that will be appended to `config`
   extraScrapeConfigs: [ ]
@@ -272,6 +272,10 @@ vector-agent:
   env:
     - name: CLUSTER_NAME
       value: "" # Kubernetes Cluster Name
+
+  tolerations:
+    - effect: NoSchedule
+      operator: Exists
 
   customConfig:
     data_dir: /vector-data-dir
