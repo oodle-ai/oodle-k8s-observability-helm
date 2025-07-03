@@ -1,7 +1,7 @@
 dependencies:
 - name: oodle-k8s-auto-instrumentation
   repository: https://oodle-ai.github.io/helm-charts
-  version: 1.2.13
+  version: 1.2.14
 - name: vector
   repository: https://helm.vector.dev
   version: 0.43.0
@@ -20,5 +20,5 @@ dependencies:
 - name: prometheus-node-exporter
   repository: https://prometheus-community.github.io/helm-charts
   version: 4.47.1
-digest: sha256:0788956d8e658eca44d060abb69938d8929907ec9e6d809c0bca21a2d10281b1
-generated: "2025-07-01T10:06:51.964651+05:30"
+digest: sha256:68954a0bcb50c4bef5cdbfdd8a24e68dc14aff4af57f69d358764009c33a8248
+generated: "2025-07-03T09:59:12.098138+05:30"
