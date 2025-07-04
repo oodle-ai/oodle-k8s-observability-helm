@@ -277,6 +277,13 @@ vector-agent:
     - effect: NoSchedule
       operator: Exists
 
+  # Additional filters applied to select which pods to scrape
+  # Example: "app.kubernetes.io/name!=kube-state-metrics,app.kubernetes.io/name!=node-exporter"
+  label_selectors: ""
+  # Additional filters applied to select which namespaces to scrape
+  # Example: "kubernetes.io/metadata.name!=kube-system,kubernetes.io/metadata.name!=kube-public"
+  namespace_label_selectors: ""
+
   customConfig:
     data_dir: /vector-data-dir
     api:
@@ -287,6 +294,8 @@ vector-agent:
     sources:
       kubernetes_logs:
         type: kubernetes_logs
+        extra_label_selector: "{{ .Values.label_selectors }}"
+        extra_namespace_label_selector: "{{ .Values.namespace_label_selectors }}"
 
     transforms:
       drop_old_logs:
@@ -323,6 +332,10 @@ vector-aggregator:
       value: "" # Oodle API Key
     - name: OODLE_LOGS_HOST
       value: "" # Oodle Logs Host
+
+  podLabels:
+    # Make sure `vector-agent` collects logs from `vector-aggregator`.
+    "vector.dev/exclude": "false"
 
   customConfig:
     data_dir: /vector-data-dir
