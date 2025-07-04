@@ -277,6 +277,21 @@ vector-agent:
     - effect: NoSchedule
       operator: Exists
 
+  # Blacklist configuration for filtering logs
+  blacklist:
+    # List of namespaces to exclude from log collection
+    namespaces: []
+    # Examples:
+    # - "kube-system"
+    # - "kube-public"
+    # - "cert-manager"
+    
+    # List of container names to exclude from log collection
+    containers: []
+    # Examples:
+    # - "istio-proxy"
+    # - "linkerd-proxy"
+
   customConfig:
     data_dir: /vector-data-dir
     api:
@@ -296,10 +311,44 @@ vector-agent:
         condition: |
           to_unix_timestamp(now()) - 24*3600 < to_unix_timestamp(timestamp!(.timestamp))
 
+      filter_blacklisted:
+        type: filter
+        inputs:
+          - drop_old_logs
+        condition: |
+          # Filter out blacklisted namespaces
+          {{- if .Values.blacklist.namespaces }}
+          {{- $blacklistedNamespaces := .Values.blacklist.namespaces }}
+          blacklisted_namespaces = [
+            {{- range $i, $ns := $blacklistedNamespaces }}
+            {{- if $i }},{{ end }}"{{ $ns }}"
+            {{- end -}}
+          ]
+          if includes(blacklisted_namespaces, string!(.kubernetes.pod_namespace)) {
+            return false
+          }
+          {{- end }}
+          
+          # Filter out blacklisted containers
+          {{- if .Values.blacklist.containers }}
+          {{- $blacklistedContainers := .Values.blacklist.containers }}
+          blacklisted_containers = [
+            {{- range $i, $container := $blacklistedContainers }}
+            {{- if $i }},{{ end }}"{{ $container }}"
+            {{- end -}}
+          ]
+          if includes(blacklisted_containers, string!(.kubernetes.container_name)) {
+            return false
+          }
+          {{- end }}
+          
+          # Allow all other logs through
+          true
+
       add_cluster_name:
         type: remap
         inputs:
-          - drop_old_logs
+          - filter_blacklisted
         source: |
           if !exists(.cluster) {
             .cluster = "${CLUSTER_NAME}"
