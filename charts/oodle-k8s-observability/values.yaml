@@ -277,6 +277,7 @@ vector-agent:
     - effect: NoSchedule
       operator: Exists
 
+  max_line_bytes: 1048576 # 1 MiB
   # Additional filters applied to select which pods to scrape
   # Example: "app.kubernetes.io/name!=kube-state-metrics,app.kubernetes.io/name!=node-exporter"
   label_selectors: ""
@@ -294,6 +295,7 @@ vector-agent:
     sources:
       kubernetes_logs:
         type: kubernetes_logs
+        max_line_bytes: {{ .Values.max_line_bytes }}
         extra_label_selector: "{{ .Values.label_selectors }}"
         extra_namespace_label_selector: "{{ .Values.namespace_label_selectors }}"
 
