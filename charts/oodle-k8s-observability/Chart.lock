@@ -1,7 +1,7 @@
 dependencies:
 - name: oodle-k8s-auto-instrumentation
   repository: https://oodle-ai.github.io/helm-charts
-  version: 1.2.14
+  version: 1.2.15
 - name: vector
   repository: https://helm.vector.dev
   version: 0.43.0
@@ -10,7 +10,7 @@ dependencies:
   version: 0.43.0
 - name: kubernetes-event-exporter
   repository: oci://registry-1.docker.io/bitnamicharts
-  version: 3.5.6
+  version: 3.6.3
 - name: victoria-metrics-agent
   repository: https://victoriametrics.github.io/helm-charts/
   version: 0.23.0
@@ -19,6 +19,6 @@ dependencies:
   version: 5.37.0
 - name: prometheus-node-exporter
   repository: https://prometheus-community.github.io/helm-charts
-  version: 4.47.1
-digest: sha256:68954a0bcb50c4bef5cdbfdd8a24e68dc14aff4af57f69d358764009c33a8248
-generated: "2025-07-03T09:59:12.098138+05:30"
+  version: 4.47.3
+digest: sha256:9675a7a19895a1f4de14cddd2ae18a5d8cdeb65bbcc34d2c2f2d1f6189b5eafc
+generated: "2025-09-13T17:38:21.619264+05:30"
