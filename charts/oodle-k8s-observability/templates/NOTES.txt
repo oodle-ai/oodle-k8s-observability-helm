@@ -1,7 +1,7 @@
 🎉 Oodle Kubernetes Observability has been installed successfully!
 
 Components installed:
-{{- if .Values.vmagent.enabled }}
+{{- if and .Values.vmagent.enabled (index .Values "kube-state-metrics" "enabled") (index .Values "prometheus-node-exporter" "enabled") }}
 ✅ Metrics
 {{- else }}
 ❌ Metrics - Disabled
