@@ -370,6 +370,12 @@ vector-aggregator:
 # Configuration for Kubernetes Event Exporter
 event-exporter:
   enabled: true
+
+  image:
+    registry: "public.ecr.aws/oodle-ai"
+    repository: kubernetes-event-exporter
+    tag: 1.7.0-debian-12-r46
+
   extraEnvVars:
     - name: CLUSTER_NAME
       value: "" # Kubernetes Cluster Name
