@@ -1,3 +1,25 @@
+# Configuration for Oodle - ConfigMap and Secret for centralized configuration
+oodleConfig:
+  # Enable ConfigMap and Secret creation
+  enabled: true
+  
+  # Cluster name for Kubernetes cluster identification
+  clusterName: "" # Kubernetes Cluster Name
+  
+  # Oodle instance identifier
+  oodleInstance: "" # Oodle Instance (e.g., inst-your-instance-id)
+  
+  # Oodle API Key (will be stored in Secret)
+  oodleApiKey: "" # Oodle API Key
+  
+  # Oodle logs host endpoint (optional)
+  # If not specified, defaults to: https://{oodleInstance}-logs.collector.oodle.ai
+  oodleLogsHost: "" # Oodle Logs Host (e.g., https://inst-your-instance-logs.collector.oodle.ai)
+  
+  # Oodle metrics host endpoint (optional)
+  # If not specified, defaults to: https://{oodleInstance}.collector.oodle.ai
+  oodleMetricsHost: "" # Oodle Metrics Host (e.g., https://inst-your-instance.collector.oodle.ai)
+
 # Configuration for kube-state-metrics chart
 kube-state-metrics:
   enabled: true
@@ -61,14 +83,37 @@ vmagent:
     prometheus.io/port: "8429"
     prometheus.io/path: "/metrics"
 
+  # Environment variables from ConfigMap and Secret
+  env:
+    - name: OODLE_API_KEY
+      valueFrom:
+        secretKeyRef:
+          name: oodle-k8s-observability-secrets
+          key: api_key
+    - name: CLUSTER_NAME
+      valueFrom:
+        configMapKeyRef:
+          name: oodle-k8s-observability-config
+          key: cluster_name
+    - name: OODLE_INSTANCE
+      valueFrom:
+        configMapKeyRef:
+          name: oodle-k8s-observability-config
+          key: oodle_instance
+    - name: OODLE_METRICS_HOST
+      valueFrom:
+        configMapKeyRef:
+          name: oodle-k8s-observability-config
+          key: oodle_metrics_host
+
   # Remote write configuration for sending metrics to Oodle
   remoteWrite:
-    - url: "" # Oodle Prometheus Metrics Write Endpoint
-      headers: "X-API-KEY: <>" # Oodle API Key
+    - url: "%{OODLE_METRICS_HOST}/v1/prometheus/%{OODLE_INSTANCE}/write"
+      headers: "X-API-KEY: %{OODLE_API_KEY}"
+      forcePromProto: true
 
   extraArgs:
     promscrape.suppressDuplicateScrapeTargetErrors: "true"
-    remoteWrite.forcePromProto: "true"
 
   # -- Extra scrape configs that will be appended to `config`
   extraScrapeConfigs: [ ]
@@ -79,7 +124,7 @@ vmagent:
       scrape_interval: 60s
       scrape_timeout: 1m
       external_labels:
-        cluster: "" # Kubernetes Cluster Name
+        cluster: "%{CLUSTER_NAME}"
 
     scrape_configs:
       # Note: vmagent scrapes itself via prometheus.io/scrape annotation
@@ -262,7 +307,11 @@ auto-instrumentation:
   enabled: true
   beyla:
     env:
-      BEYLA_KUBE_CLUSTER_NAME: "" # Kubernetes Cluster Name
+      - name: BEYLA_KUBE_CLUSTER_NAME
+        valueFrom:
+          configMapKeyRef:
+            name: oodle-k8s-observability-config
+            key: cluster_name
 
 # Configuration for Vector Agent
 vector-agent:
@@ -271,7 +320,10 @@ vector-agent:
 
   env:
     - name: CLUSTER_NAME
-      value: "" # Kubernetes Cluster Name
+      valueFrom:
+        configMapKeyRef:
+          name: oodle-k8s-observability-config
+          key: cluster_name
 
   tolerations:
     - effect: NoSchedule
@@ -328,11 +380,20 @@ vector-aggregator:
   enabled: true
   env:
     - name: OODLE_INSTANCE
-      value: "" # Oodle Instance
+      valueFrom:
+        configMapKeyRef:
+          name: oodle-k8s-observability-config
+          key: oodle_instance
     - name: OODLE_API_KEY
-      value: "" # Oodle API Key
+      valueFrom:
+        secretKeyRef:
+          name: oodle-k8s-observability-secrets
+          key: api_key
     - name: OODLE_LOGS_HOST
-      value: "" # Oodle Logs Host
+      valueFrom:
+        configMapKeyRef:
+          name: oodle-k8s-observability-config
+          key: oodle_logs_host
 
   podLabels:
     # Make sure `vector-agent` collects logs from `vector-aggregator`.
@@ -382,16 +443,29 @@ event-exporter:
 
   extraEnvVars:
     - name: CLUSTER_NAME
-      value: "" # Kubernetes Cluster Name
+      valueFrom:
+        configMapKeyRef:
+          name: oodle-k8s-observability-config
+          key: cluster_name
     - name: OODLE_INSTANCE
-      value: "" # Oodle Instance
+      valueFrom:
+        configMapKeyRef:
+          name: oodle-k8s-observability-config
+          key: oodle_instance
     - name: OODLE_API_KEY
-      value: "" # Oodle API Key
+      valueFrom:
+        secretKeyRef:
+          name: oodle-k8s-observability-secrets
+          key: api_key
     - name: OODLE_LOGS_HOST
-      value: "" # Oodle Logs Host
+      valueFrom:
+        configMapKeyRef:
+          name: oodle-k8s-observability-config
+          key: oodle_logs_host
 
   config:
     clusterName: "${CLUSTER_NAME}"
+    maxEventAgeSeconds: 600
     logLevel: info
     logFormat: pretty
     route:

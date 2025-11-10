@@ -6,8 +6,10 @@ An umbrella Helm chart that provides a complete observability stack for Kubernet
 
 This chart deploys:
 
-- **k8s-monitoring** - Kubernetes metrics collection via Prometheus remote write
-- **oodle-k8s-auto-instrumentation** - eBPF-based auto-instrumentation using Beyla  
+- **kube-state-metrics** - Kubernetes object state metrics
+- **prometheus-node-exporter** - Node-level hardware and OS metrics
+- **vmagent** - Prometheus metrics collection and remote write to Oodle
+- **oodle-k8s-auto-instrumentation** - eBPF-based auto-instrumentation using Beyla
 - **vector-agent & vector-aggregator** - Log collection and processing pipeline
 - **kubernetes-event-exporter** - Kubernetes events collection
 
@@ -51,65 +53,69 @@ helm install oodle-observability . \
 
 ### Required Configuration
 
-Create a values file with your cluster-specific settings:
+This chart uses ConfigMap and Secret for centralized configuration management. Create a values file with your cluster-specific settings:
 
 ```yaml
-monitoring:
-  cluster:
-    name: "your-cluster-name"
-  externalServices:
-    prometheus:
-      host: "https://your-oodle-endpoint.com"
-      apiKey: "your-api-key"
-      writeEndpoint: "/v1/prometheus/your-instance/write"
+# Centralized configuration - all components will use these values
+oodleConfig:
+  enabled: true
+  clusterName: "your-cluster-name"
+  oodleInstance: "inst-your-instance-id"
+  oodleApiKey: "your-api-key"
+  # oodleLogsHost and oodleMetricsHost are optional
+  # If not specified, they will be auto-generated from oodleInstance:
+  #   oodleLogsHost: https://{oodleInstance}-logs.collector.oodle.ai
+  #   oodleMetricsHost: https://{oodleInstance}.collector.oodle.ai
+  # Uncomment and specify custom values if needed:
+  # oodleLogsHost: "https://custom-logs.example.com"
+  # oodleMetricsHost: "https://custom-metrics.example.com"
 
+# Metrics collection configuration
+vmagent:
+  enabled: true
+
+# Auto-instrumentation configuration
 auto-instrumentation:
-  beyla:
-    env:
-      OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: "https://your-oodle-endpoint.com/v1/otlp/metrics/your-instance"
-      OTEL_EXPORTER_OTLP_HEADERS: "X-API-KEY=your-api-key"
-      BEYLA_KUBE_CLUSTER_NAME: "your-cluster-name"
+  enabled: true
 
+# Log collection configuration
 vector-agent:
-  env:
-    - name: CLUSTER_NAME
-      value: "your-cluster-name"
+  enabled: true
 
 vector-aggregator:
-  env:
-    - name: OODLE_INSTANCE
-      value: "your-instance"
-    - name: OODLE_API_KEY
-      value: "your-api-key"
-    - name: OODLE_LOGS_HOST
-      value: "https://your-logs-endpoint.com"
+  enabled: true
 
+# Kubernetes events configuration
 event-exporter:
-  extraEnvVars:
-    - name: CLUSTER_NAME
-      value: "your-cluster-name"
-    - name: OODLE_INSTANCE
-      value: "your-instance"
-    - name: OODLE_API_KEY
-      value: "your-api-key"
-    - name: OODLE_LOGS_HOST
-      value: "https://your-logs-endpoint.com"
+  enabled: true
 ```
+
+**Note:** The chart automatically creates:
+- A ConfigMap named `oodle-k8s-observability-config` containing cluster name, instance ID, and endpoint URLs
+  - If `oodleLogsHost` or `oodleMetricsHost` are not specified, they will be auto-generated from `oodleInstance`
+  - Pattern: `https://{oodleInstance}.collector.oodle.ai` (metrics) and `https://{oodleInstance}-logs.collector.oodle.ai` (logs)
+- A Secret named `oodle-k8s-observability-secrets` containing the API key
+
+All sub-charts automatically reference these resources for their environment variables.
 
 ### Component Control
 
 Enable or disable components as needed:
 
 ```yaml
-monitoring:           # Metrics collection
+kube-state-metrics:      # Kubernetes object metrics
   enabled: true
-auto-instrumentation: # eBPF instrumentation  
+prometheus-node-exporter: # Node-level metrics
   enabled: true
-vector-agent:         # Log collection
+vmagent:                  # Metrics collection and forwarding
   enabled: true
-vector-aggregator:    # Log processing
+auto-instrumentation:     # eBPF-based auto-instrumentation
   enabled: true
-event-exporter:       # Kubernetes events
+vector-agent:             # Log collection
+  enabled: true
+vector-aggregator:        # Log processing and forwarding
+  enabled: true
+event-exporter:           # Kubernetes events collection
   enabled: true
 ```
 
