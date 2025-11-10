@@ -306,12 +306,12 @@ vmagent:
 auto-instrumentation:
   enabled: true
   beyla:
-    env:
-      - name: BEYLA_KUBE_CLUSTER_NAME
-        valueFrom:
-          configMapKeyRef:
-            name: oodle-k8s-observability-config
-            key: cluster_name
+    # Use envValueFrom to reference ConfigMap values
+    envValueFrom:
+      BEYLA_KUBE_CLUSTER_NAME:
+        configMapKeyRef:
+          name: oodle-k8s-observability-config
+          key: cluster_name
 
 # Configuration for Vector Agent
 vector-agent:
