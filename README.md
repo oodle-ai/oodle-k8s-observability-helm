@@ -53,7 +53,19 @@ helm install oodle-observability . \
 
 ### Required Configuration
 
-This chart uses ConfigMap and Secret for centralized configuration management. Create a values file with your cluster-specific settings:
+#### Step 1: Create the API Key Secret
+
+Before installing the chart, create a Kubernetes secret containing your Oodle API key:
+
+```bash
+kubectl create secret generic oodle-api-key \
+  --from-literal=apiKey=YOUR_API_KEY \
+  --namespace oodle-monitoring
+```
+
+#### Step 2: Configure the Chart
+
+Create a values file with your cluster-specific settings:
 
 ```yaml
 # Centralized configuration - all components will use these values
@@ -61,42 +73,118 @@ oodleConfig:
   enabled: true
   clusterName: "your-cluster-name"
   oodleInstance: "inst-your-instance-id"
-  oodleApiKey: "your-api-key"
-  # oodleLogsHost and oodleMetricsHost are optional
+  
+  # Optional: Override default endpoints
   # If not specified, they will be auto-generated from oodleInstance:
   #   oodleLogsHost: https://{oodleInstance}-logs.collector.oodle.ai
   #   oodleMetricsHost: https://{oodleInstance}.collector.oodle.ai
-  # Uncomment and specify custom values if needed:
   # oodleLogsHost: "https://custom-logs.example.com"
   # oodleMetricsHost: "https://custom-metrics.example.com"
 
-# Metrics collection configuration
+# Enable/disable components as needed
 vmagent:
   enabled: true
 
-# Auto-instrumentation configuration
 auto-instrumentation:
   enabled: true
 
-# Log collection configuration
 vector-agent:
   enabled: true
 
 vector-aggregator:
   enabled: true
 
-# Kubernetes events configuration
 event-exporter:
   enabled: true
 ```
+
+**That's it!** The chart automatically uses the secret you created (`oodle-api-key`) for all components.
+
+<details>
+<summary><b>Using a Custom Secret Name</b> (click to expand)</summary>
+
+If you need to use a different secret name or key, override the secret references in the affected components:
+
+```yaml
+# Override secret references to use your custom secret
+vmagent:
+  env:
+    - name: OODLE_API_KEY
+      valueFrom:
+        secretKeyRef:
+          name: my-custom-secret
+          key: myApiKey
+
+vector-aggregator:
+  env:
+    - name: OODLE_API_KEY
+      valueFrom:
+        secretKeyRef:
+          name: my-custom-secret
+          key: myApiKey
+
+event-exporter:
+  extraEnvVars:
+    - name: OODLE_API_KEY
+      valueFrom:
+        secretKeyRef:
+          name: my-custom-secret
+          key: myApiKey
+```
+
+</details>
 
 **Note:** The chart automatically creates:
 - A ConfigMap named `oodle-k8s-observability-config` containing cluster name, instance ID, and endpoint URLs
   - If `oodleLogsHost` or `oodleMetricsHost` are not specified, they will be auto-generated from `oodleInstance`
   - Pattern: `https://{oodleInstance}.collector.oodle.ai` (metrics) and `https://{oodleInstance}-logs.collector.oodle.ai` (logs)
-- A Secret named `oodle-k8s-observability-secrets` containing the API key
 
-All sub-charts automatically reference these resources for their environment variables.
+You must create your own Secret with the Oodle API key before installing the chart. This provides better security and allows you to manage secrets separately using your preferred secrets management solution.
+
+### Advanced: External ConfigMap Management
+
+<details>
+<summary><b>Using a Manually Created ConfigMap</b> (click to expand)</summary>
+
+If you prefer to manage the ConfigMap externally (e.g., using GitOps tools, External Secrets Operator, or other configuration management), you can disable the chart's ConfigMap creation:
+
+**Step 1:** Create your ConfigMap manually:
+
+```bash
+kubectl create configmap oodle-k8s-observability-config \
+  --from-literal=clusterName=your-cluster-name \
+  --from-literal=oodleInstance=inst-your-instance-id \
+  --from-literal=oodleLogsHost=https://inst-your-instance-logs.collector.oodle.ai \
+  --from-literal=oodleMetricsHost=https://inst-your-instance.collector.oodle.ai \
+  --namespace oodle-monitoring
+```
+
+**Step 2:** Install the chart with ConfigMap creation disabled:
+
+```yaml
+oodleConfig:
+  enabled: false  # Disable ConfigMap creation
+
+# Components will still reference the manually created ConfigMap
+vmagent:
+  enabled: true
+
+auto-instrumentation:
+  enabled: true
+
+vector-agent:
+  enabled: true
+
+vector-aggregator:
+  enabled: true
+
+event-exporter:
+  enabled: true
+```
+
+**Note:** The ConfigMap must be named `oodle-k8s-observability-config` and must contain all required keys (`clusterName`, `oodleInstance`, `oodleLogsHost`, `oodleMetricsHost`).
+
+</details>
 
 ### Component Control
 

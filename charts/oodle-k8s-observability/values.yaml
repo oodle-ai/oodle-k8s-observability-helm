@@ -1,6 +1,18 @@
-# Configuration for Oodle - ConfigMap and Secret for centralized configuration
+# Configuration for Oodle - ConfigMap for centralized configuration
+# 
+# IMPORTANT: Before installing this chart, create a Kubernetes Secret with your Oodle API key:
+#   kubectl create secret generic oodle-api-key --from-literal=apiKey=YOUR_API_KEY
+# 
+# The chart expects a secret named 'oodle-api-key' with key 'apiKey' by default.
+# If using a different secret name, override the secretKeyRef in vmagent, vector-aggregator, and event-exporter.
 oodleConfig:
-  # Enable ConfigMap and Secret creation
+  # Enable ConfigMap creation by this chart
+  # Set to false if you want to manage the ConfigMap externally
+  # If false, you must create a ConfigMap named 'oodle-k8s-observability-config' with these keys:
+  #   - clusterName
+  #   - oodleInstance
+  #   - oodleLogsHost
+  #   - oodleMetricsHost
   enabled: true
   
   # Cluster name for Kubernetes cluster identification
@@ -8,9 +20,6 @@ oodleConfig:
   
   # Oodle instance identifier
   oodleInstance: "" # Oodle Instance (e.g., inst-your-instance-id)
-  
-  # Oodle API Key (will be stored in Secret)
-  oodleApiKey: "" # Oodle API Key
   
   # Oodle logs host endpoint (optional)
   # If not specified, defaults to: https://{oodleInstance}-logs.collector.oodle.ai
@@ -88,23 +97,23 @@ vmagent:
     - name: OODLE_API_KEY
       valueFrom:
         secretKeyRef:
-          name: oodle-k8s-observability-secrets
-          key: api_key
+          name: oodle-api-key
+          key: apiKey
     - name: CLUSTER_NAME
       valueFrom:
         configMapKeyRef:
           name: oodle-k8s-observability-config
-          key: cluster_name
+          key: clusterName
     - name: OODLE_INSTANCE
       valueFrom:
         configMapKeyRef:
           name: oodle-k8s-observability-config
-          key: oodle_instance
+          key: oodleInstance
     - name: OODLE_METRICS_HOST
       valueFrom:
         configMapKeyRef:
           name: oodle-k8s-observability-config
-          key: oodle_metrics_host
+          key: oodleMetricsHost
 
   # Remote write configuration for sending metrics to Oodle
   remoteWrite:
@@ -311,7 +320,7 @@ auto-instrumentation:
       BEYLA_KUBE_CLUSTER_NAME:
         configMapKeyRef:
           name: oodle-k8s-observability-config
-          key: cluster_name
+          key: clusterName
 
 # Configuration for Vector Agent
 vector-agent:
@@ -323,7 +332,7 @@ vector-agent:
       valueFrom:
         configMapKeyRef:
           name: oodle-k8s-observability-config
-          key: cluster_name
+          key: clusterName
 
   tolerations:
     - effect: NoSchedule
@@ -383,17 +392,17 @@ vector-aggregator:
       valueFrom:
         configMapKeyRef:
           name: oodle-k8s-observability-config
-          key: oodle_instance
+          key: oodleInstance
     - name: OODLE_API_KEY
       valueFrom:
         secretKeyRef:
-          name: oodle-k8s-observability-secrets
-          key: api_key
+          name: oodle-api-key
+          key: apiKey
     - name: OODLE_LOGS_HOST
       valueFrom:
         configMapKeyRef:
           name: oodle-k8s-observability-config
-          key: oodle_logs_host
+          key: oodleLogsHost
 
   podLabels:
     # Make sure `vector-agent` collects logs from `vector-aggregator`.
@@ -446,22 +455,22 @@ event-exporter:
       valueFrom:
         configMapKeyRef:
           name: oodle-k8s-observability-config
-          key: cluster_name
+          key: clusterName
     - name: OODLE_INSTANCE
       valueFrom:
         configMapKeyRef:
           name: oodle-k8s-observability-config
-          key: oodle_instance
+          key: oodleInstance
     - name: OODLE_API_KEY
       valueFrom:
         secretKeyRef:
-          name: oodle-k8s-observability-secrets
-          key: api_key
+          name: oodle-api-key
+          key: apiKey
     - name: OODLE_LOGS_HOST
       valueFrom:
         configMapKeyRef:
           name: oodle-k8s-observability-config
-          key: oodle_logs_host
+          key: oodleLogsHost
 
   config:
     clusterName: "${CLUSTER_NAME}"
