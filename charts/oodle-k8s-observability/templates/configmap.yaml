@@ -1,0 +1,23 @@
+{{- if .Values.oodleConfig.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: oodle-k8s-observability-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "oodle-k8s-observability.labels" . | nindent 4 }}
+data:
+  clusterName: {{ .Values.oodleConfig.clusterName | quote }}
+  oodleInstance: {{ .Values.oodleConfig.oodleInstance | quote }}
+  {{- if .Values.oodleConfig.oodleLogsHost }}
+  oodleLogsHost: {{ .Values.oodleConfig.oodleLogsHost | quote }}
+  {{- else }}
+  oodleLogsHost: {{ printf "https://%s-logs.collector.oodle.ai" .Values.oodleConfig.oodleInstance | quote }}
+  {{- end }}
+  {{- if .Values.oodleConfig.oodleMetricsHost }}
+  oodleMetricsHost: {{ .Values.oodleConfig.oodleMetricsHost | quote }}
+  {{- else }}
+  oodleMetricsHost: {{ printf "https://%s.collector.oodle.ai" .Values.oodleConfig.oodleInstance | quote }}
+  {{- end }}
+{{- end }}
+
