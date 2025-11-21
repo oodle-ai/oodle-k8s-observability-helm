@@ -130,8 +130,14 @@ vmagent:
             labelSelector:
               matchLabels:
                 app.kubernetes.io/name: vmagent
-                app.kubernetes.io/instance: '{{ .Release.Name }}'
+                app.kubernetes.io/instance: oodle-observability  # ← UPDATE THIS to your release name
             topologyKey: kubernetes.io/hostname
+
+  # Pod labels (optional - for additional custom labels beyond the defaults)
+  # The vmagent chart already sets standard Kubernetes labels automatically:
+  # - app.kubernetes.io/name, app.kubernetes.io/instance, etc.
+  # Add custom labels here if needed for your specific use cases
+  podLabels: {}
 
   # Add prometheus annotations for self-discovery
   podAnnotations:
