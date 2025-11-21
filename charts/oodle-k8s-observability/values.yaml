@@ -66,11 +66,37 @@ vmagent:
     spec:
       podManagementPolicy: "Parallel"
 
+  # Storage configuration for scrape queue
+  # The master switch is: persistentVolume.enabled
+  # - If enabled: true  → Uses PVC (emptyDir config is IGNORED)
+  # - If enabled: false → Uses emptyDir (persistentVolume.size is IGNORED)
+  # 
+  # Option 1: Persistent Volume (RECOMMENDED for production)
+  # - Survives pod restarts and node failures
+  # - Queued metrics are preserved during outages
+  # - Required for reliable metric delivery
+  # 
+  # Option 2: EmptyDir (for dev/testing or low-criticality environments)
+  # - Faster performance (especially with memory-backed tmpfs)
+  # - Data lost on pod restart
+  # - Lower resource requirements (no PVC needed)
+
   # Persistent volume for each replica to store scrape queue
   persistentVolume:
-    enabled: true
+    enabled: true  # ← MASTER SWITCH: Set to false to use emptyDir instead
     size: 20Gi
     storageClass: ""
+    # Maximum disk usage per remote write URL (set in extraArgs below)
+    # Recommended: 85% of PVC size to leave headroom for filesystem overhead
+    # Current: 20Gi * 0.85 = 17GB
+    # If you change 'size' above, update remoteWrite.maxDiskUsagePerURL in extraArgs proportionally
+
+  # EmptyDir configuration (ONLY used when persistentVolume.enabled: false)
+  emptyDir:
+    sizeLimit: 20Gi
+  #  
+  # Note: Always update remoteWrite.maxDiskUsagePerURL in extraArgs
+  #       to ~85% of sizeLimit (e.g., 20Gi → 17GB)
 
   # Resource limits for each replica
   resources:
@@ -85,6 +111,33 @@ vmagent:
   podDisruptionBudget:
     enabled: true
     minAvailable: 1
+
+  # Pod anti-affinity to spread replicas across different nodes
+  # Using "preferred" (soft requirement) instead of "required" (hard requirement)
+  # to allow deployment on single-node clusters while still preferring node spreading
+  # 
+  # Behavior:
+  # - Multi-node cluster: Pods will be spread across different nodes (weight: 100)
+  # - Single-node cluster: Both pods can run on the same node (better than Pending)
+  # 
+  # To enforce HARD requirement (pods won't schedule on single-node):
+  # Change "preferredDuringScheduling..." to "requiredDuringScheduling..."
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/name: vmagent
+                app.kubernetes.io/instance: oodle-observability  # ← UPDATE THIS to your release name
+            topologyKey: kubernetes.io/hostname
+
+  # Pod labels (optional - for additional custom labels beyond the defaults)
+  # The vmagent chart already sets standard Kubernetes labels automatically:
+  # - app.kubernetes.io/name, app.kubernetes.io/instance, etc.
+  # Add custom labels here if needed for your specific use cases
+  podLabels: {}
 
   # Add prometheus annotations for self-discovery
   podAnnotations:
@@ -123,6 +176,14 @@ vmagent:
 
   extraArgs:
     promscrape.suppressDuplicateScrapeTargetErrors: "true"
+    # Maximum disk space per remote write URL for persistent queue
+    # ⚠️  MUST be set to ~85% of your storage size (PersistentVolume or emptyDir)
+    # Currently set for: 20Gi storage → 20Gi * 0.85 = 17GB
+    # Update this value whenever persistentVolume.size or emptyDir.sizeLimit changes!
+    #
+    # Quick Reference (85% of storage):
+    #   10Gi → 8.5GB  |  20Gi → 17GB  |  50Gi → 42GB  |  100Gi → 85GB
+    remoteWrite.maxDiskUsagePerURL: "17GB"
 
   # -- Extra scrape configs that will be appended to `config`
   extraScrapeConfigs: [ ]
