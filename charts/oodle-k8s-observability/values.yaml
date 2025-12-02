@@ -537,7 +537,7 @@ event-exporter:
     clusterName: "${CLUSTER_NAME}"
     maxEventAgeSeconds: 600
     logLevel: info
-    logFormat: pretty
+    logFormat: json
     route:
       routes:
         - match:
