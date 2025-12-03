@@ -207,6 +207,358 @@ event-exporter:           # Kubernetes events collection
   enabled: true
 ```
 
+### Scrape Job Configuration (Opt-in Feature)
+
+> **⚠️ Note:** This is an opt-in feature disabled by default for backwards compatibility.
+> Existing users can continue using `vmagent.config.scrape_configs` as before.
+
+When enabled, you can individually enable/disable scrape jobs and add metric drop rules without modifying the entire scrape configuration.
+
+#### Enabling Managed Scrape Config
+
+To use the managed scrape configuration feature, add **both** settings to your values file:
+
+```yaml
+vmagent:
+  managedScrapeConfig:
+    enabled: true
+  configMap: "vmagent-scrape-config"  # Required when managedScrapeConfig is enabled
+```
+
+> ⚠️ **Important:** When `managedScrapeConfig.enabled` is `true`, you **must** set `configMap: "vmagent-scrape-config"`. The chart will not work correctly without this setting.
+
+#### Scrape Interval and Timeout
+
+Configure global scrape interval and timeout for all jobs:
+
+```yaml
+vmagent:
+  managedScrapeConfig:
+    enabled: true
+    scrape_interval: 60s   # How often to scrape targets (default: 60s)
+    scrape_timeout: 1m     # Timeout for each scrape request (default: 1m)
+  configMap: "vmagent-scrape-config"
+```
+
+You can also override these settings per-job for fine-grained control:
+
+```yaml
+vmagent:
+  managedScrapeConfig:
+    enabled: true
+    scrape_interval: 60s   # Global default
+    scrape_timeout: 1m     # Global default
+  configMap: "vmagent-scrape-config"
+  
+  scrapeJobs:
+    # API server metrics - scrape less frequently (reduce load)
+    kubernetesApiservers:
+      enabled: true
+      scrape_interval: 120s
+      scrape_timeout: 90s
+    
+    # cAdvisor - scrape more frequently for container metrics
+    kubernetesNodesCadvisor:
+      enabled: true
+      scrape_interval: 30s
+      scrape_timeout: 25s
+    
+    # Other jobs use global defaults (60s interval, 1m timeout)
+    kubernetesNodes:
+      enabled: true
+    kubeStateMetrics:
+      enabled: true
+```
+
+> **Note:** `scrape_timeout` should always be less than or equal to `scrape_interval`.
+
+#### Available Scrape Jobs
+
+| Job Name | Values Key | Description |
+|----------|------------|-------------|
+| `kubernetes-apiservers` | `scrapeJobs.kubernetesApiservers` | Kubernetes API server metrics |
+| `kubernetes-nodes` | `scrapeJobs.kubernetesNodes` | Kubelet metrics from each node |
+| `kubernetes-nodes-cadvisor` | `scrapeJobs.kubernetesNodesCadvisor` | cAdvisor container metrics |
+| `kube-state-metrics` | `scrapeJobs.kubeStateMetrics` | Kubernetes object state metrics |
+| `node-exporter` | `scrapeJobs.nodeExporter` | Node-level hardware/OS metrics |
+| `kubernetes-pods` | `scrapeJobs.kubernetesPods` | Pods with `prometheus.io/scrape: true` annotation |
+| `oodle-beyla` | `scrapeJobs.oodleBeyla` | Beyla eBPF auto-instrumentation metrics |
+
+#### Disabling Scrape Jobs
+
+To disable specific scrape jobs, enable managed config and set their `enabled` field to `false`:
+
+```yaml
+vmagent:
+  # Enable managed scrape config
+  managedScrapeConfig:
+    enabled: true
+  configMap: "vmagent-scrape-config"
+  
+  scrapeJobs:
+    # Disable API server metrics collection
+    kubernetesApiservers:
+      enabled: false
+    
+    # Disable cAdvisor metrics (container metrics)
+    kubernetesNodesCadvisor:
+      enabled: false
+    
+    # Keep other jobs enabled (default)
+    kubernetesNodes:
+      enabled: true
+    kubeStateMetrics:
+      enabled: true
+    nodeExporter:
+      enabled: true
+    kubernetesPods:
+      enabled: true
+    oodleBeyla:
+      enabled: true
+```
+
+### Metric Drop Rules
+
+You can drop or filter metrics using `metric_relabel_configs`. There are two approaches depending on your setup:
+
+#### Option 1: Using Managed Scrape Config (Recommended for new deployments)
+
+When `managedScrapeConfig.enabled: true`, you can add drop rules per-job:
+
+```yaml
+vmagent:
+  managedScrapeConfig:
+    enabled: true
+  configMap: "vmagent-scrape-config"
+  
+  scrapeJobs:
+    # Drop specific metrics from API server
+    kubernetesApiservers:
+      enabled: true
+      metric_relabel_configs:
+        # Drop histogram bucket metrics (high cardinality)
+        - source_labels: [__name__]
+          regex: "apiserver_request_duration_seconds_bucket"
+          action: drop
+        # Drop metrics with specific labels
+        - source_labels: [verb]
+          regex: "WATCH"
+          action: drop
+    
+    # Drop Go runtime metrics from node-exporter
+    nodeExporter:
+      enabled: true
+      metric_relabel_configs:
+        - source_labels: [__name__]
+          regex: "go_.*"
+          action: drop
+    
+    # Filter cAdvisor metrics - keep only essential container metrics
+    kubernetesNodesCadvisor:
+      enabled: true
+      metric_relabel_configs:
+        - source_labels: [__name__]
+          regex: "(container_cpu_usage_seconds_total|container_memory_working_set_bytes|container_network_.*)"
+          action: keep
+```
+
+#### Option 2: Using Default Config (For existing deployments)
+
+If you're not using managed scrape config, add `metric_relabel_configs` directly to `vmagent.config.scrape_configs`:
+
+```yaml
+vmagent:
+  config:
+    scrape_configs:
+      - job_name: kubernetes-apiservers
+        # ... existing config ...
+        metric_relabel_configs:
+          - source_labels: [__name__]
+            regex: "apiserver_request_duration_seconds_bucket"
+            action: drop
+```
+
+#### Common Metric Relabel Patterns
+
+<details>
+<summary><b>Drop by Metric Name Prefix</b></summary>
+
+```yaml
+metric_relabel_configs:
+  # Drop all metrics starting with 'go_'
+  - source_labels: [__name__]
+    regex: "go_.*"
+    action: drop
+  
+  # Drop multiple prefixes
+  - source_labels: [__name__]
+    regex: "(go_|process_|promhttp_).*"
+    action: drop
+```
+
+</details>
+
+<details>
+<summary><b>Drop by Label Value</b></summary>
+
+```yaml
+metric_relabel_configs:
+  # Drop metrics from specific namespace
+  - source_labels: [namespace]
+    regex: "kube-system"
+    action: drop
+  
+  # Drop metrics with specific job label
+  - source_labels: [job]
+    regex: "some-noisy-job"
+    action: drop
+  
+  # Drop based on multiple labels
+  - source_labels: [namespace, pod]
+    separator: ";"
+    regex: "default;my-noisy-pod.*"
+    action: drop
+```
+
+</details>
+
+<details>
+<summary><b>Keep Only Specific Metrics</b></summary>
+
+```yaml
+metric_relabel_configs:
+  # Keep only essential metrics (drop everything else)
+  - source_labels: [__name__]
+    regex: "(up|container_cpu_usage_seconds_total|container_memory_working_set_bytes|kube_pod_status_phase)"
+    action: keep
+```
+
+</details>
+
+<details>
+<summary><b>Drop High-Cardinality Histogram Buckets</b></summary>
+
+```yaml
+metric_relabel_configs:
+  # Drop histogram bucket metrics (keep sum and count)
+  - source_labels: [__name__]
+    regex: ".*_bucket"
+    action: drop
+  
+  # Or drop specific histogram buckets
+  - source_labels: [__name__]
+    regex: "(apiserver_request_duration_seconds_bucket|etcd_request_duration_seconds_bucket)"
+    action: drop
+```
+
+</details>
+
+<details>
+<summary><b>Remove High-Cardinality Labels</b></summary>
+
+```yaml
+metric_relabel_configs:
+  # Remove 'le' label (histogram bucket boundaries) - use with caution
+  - regex: "le"
+    action: labeldrop
+  
+  # Remove labels matching a pattern
+  - regex: "kubernetes_io_.*"
+    action: labeldrop
+```
+
+</details>
+
+#### Adding Custom Scrape Jobs
+
+Use `extraScrapeConfigs` to add additional scrape jobs:
+
+```yaml
+vmagent:
+  extraScrapeConfigs:
+    - job_name: my-custom-app
+      kubernetes_sd_configs:
+        - role: pod
+      relabel_configs:
+        - source_labels: [__meta_kubernetes_pod_label_app]
+          action: keep
+          regex: "my-app"
+        - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+          action: replace
+          regex: (.+)
+          target_label: __address__
+          replacement: $1
+      metric_relabel_configs:
+        - source_labels: [__name__]
+          regex: "my_app_important_.*"
+          action: keep
+```
+
+For more information on metric relabeling, see:
+- [VictoriaMetrics vmagent documentation](https://docs.victoriametrics.com/victoriametrics/relabeling/)
+- [Prometheus relabel_config documentation](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#relabel_config)
+
+### Migration Guide: Adopting Managed Scrape Config
+
+If you're upgrading from a previous version and want to use the new managed scrape config feature:
+
+<details>
+<summary><b>Step-by-step migration</b></summary>
+
+**Step 1:** Review your current customizations
+
+Check if you have any customizations in `vmagent.config.scrape_configs`:
+- Custom scrape jobs
+- Custom `metric_relabel_configs`
+- Modified relabel configs
+
+**Step 2:** Enable managed scrape config
+
+Add these settings to your values file:
+
+```yaml
+vmagent:
+  managedScrapeConfig:
+    enabled: true
+  configMap: "vmagent-scrape-config"
+```
+
+**Step 3:** Migrate your customizations
+
+- **Disabled jobs:** Set `scrapeJobs.<jobName>.enabled: false`
+- **Custom metric_relabel_configs:** Add to `scrapeJobs.<jobName>.metric_relabel_configs`
+- **Custom scrape jobs:** Add to `extraScrapeConfigs`
+
+**Step 4:** Test before deploying
+
+```bash
+# Render templates locally to verify
+helm template my-release ./charts/oodle-k8s-observability \
+  -f my-values.yaml \
+  --set oodleConfig.clusterName=test \
+  --set oodleConfig.oodleInstance=inst-test \
+  | grep -A 100 "name: vmagent-scrape-config"
+```
+
+**Step 5:** Deploy the upgrade
+
+```bash
+helm upgrade my-release ./charts/oodle-k8s-observability -f my-values.yaml
+```
+
+</details>
+
+<details>
+<summary><b>Staying with default config (no migration needed)</b></summary>
+
+If you prefer to continue using `vmagent.config.scrape_configs` directly:
+
+- **No changes required** - the default behavior is preserved
+- Continue customizing `vmagent.config.scrape_configs` as before
+- The `managedScrapeConfig` feature remains disabled by default
+
+</details>
+
 ## Upgrading
 
 ```bash

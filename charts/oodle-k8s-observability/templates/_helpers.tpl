@@ -49,3 +49,15 @@ Selector labels
 app.kubernetes.io/name: {{ include "oodle-k8s-observability.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
+
+{{/*
+Validate vmagent configuration
+Ensures that when managedScrapeConfig.enabled is true, configMap is set to "vmagent-scrape-config"
+*/}}
+{{- define "oodle-k8s-observability.validateVmagentConfig" -}}
+{{- if .Values.vmagent.managedScrapeConfig.enabled }}
+  {{- if ne (default "" .Values.vmagent.configMap) "vmagent-scrape-config" }}
+    {{- fail "When vmagent.managedScrapeConfig.enabled is true, vmagent.configMap must be set to 'vmagent-scrape-config'" }}
+  {{- end }}
+{{- end }}
+{{- end }}

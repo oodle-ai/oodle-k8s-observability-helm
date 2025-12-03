@@ -188,7 +188,119 @@ vmagent:
   # -- Extra scrape configs that will be appended to `config`
   extraScrapeConfigs: [ ]
 
-  # Scrape configuration for collecting metrics
+  # =============================================================================
+  # MANAGED SCRAPE CONFIG (OPT-IN FEATURE)
+  # =============================================================================
+  # When enabled, this chart manages the vmagent scrape configuration via a
+  # dedicated ConfigMap, allowing you to enable/disable individual scrape jobs
+  # and add metric drop rules per-job or globally.
+  # 
+  # ⚠️  IMPORTANT: This is disabled by default for backwards compatibility.
+  # Existing users who have customized vmagent.config.scrape_configs should
+  # continue to use that approach unless they want to migrate to this new system.
+  # 
+  # To enable managed scrape config, add BOTH settings to your values:
+  # 
+  #   vmagent:
+  #     managedScrapeConfig:
+  #       enabled: true
+  #     configMap: "vmagent-scrape-config"  # Required when managedScrapeConfig is enabled
+  # 
+  # When enabled:
+  # - A ConfigMap 'vmagent-scrape-config' is created with conditional scrape jobs
+  # - The 'scrapeJobs' section below controls which jobs are enabled
+  # - The 'globalMetricRelabelConfigs' applies drop rules to all jobs
+  # - The 'vmagent.config' section is IGNORED (use scrapeJobs instead)
+  # 
+  # When disabled (default):
+  # - The 'vmagent.config' section below is used as-is
+  # - 'scrapeJobs' and 'globalMetricRelabelConfigs' have no effect
+  # =============================================================================
+  managedScrapeConfig:
+    enabled: false  # Set to true to use configurable scrapeJobs
+    # Global scrape settings (only used when managedScrapeConfig.enabled: true)
+    scrape_interval: 60s
+    scrape_timeout: 1m
+  
+  # ⚠️  NOTE:
+  # If managedScrapeConfig.enabled is true, then configMap must be set to
+  # "vmagent-scrape-config" to use the managed scrape config.
+  # configMap: "vmagent-scrape-config"
+
+  # -----------------------------------------------------------------------------
+  # SCRAPE JOBS CONFIGURATION (only used when managedScrapeConfig.enabled: true)
+  # -----------------------------------------------------------------------------
+  # Enable/disable individual scrape jobs as needed.
+  # Each job can also have custom metric_relabel_configs to drop/modify metrics.
+  # 
+  # To disable a scrape job, set its 'enabled' field to false.
+  # To add metric drop rules, add entries to 'metric_relabel_configs' for that job.
+  # -----------------------------------------------------------------------------
+  scrapeJobs:
+    # Scrape Kubernetes API servers
+    kubernetesApiServers:
+      enabled: true
+      # Per-job overrides (optional - defaults to global managedScrapeConfig values):
+      # scrape_interval: 60s
+      # scrape_timeout: 1m
+      # Add custom metric_relabel_configs to drop/modify metrics
+      # Example to drop metrics by prefix:
+      # metric_relabel_configs:
+      #   - source_labels: [__name__]
+      #     regex: "apiserver_request_duration_seconds_bucket"
+      #     action: drop
+
+    # Scrape Kubelet metrics from each node
+    kubernetesNodes:
+      enabled: true
+      # scrape_interval: 60s
+      # scrape_timeout: 1m
+      # metric_relabel_configs: []
+
+    # Scrape cAdvisor metrics (container metrics)
+    kubernetesNodesCadvisor:
+      enabled: true
+      # scrape_interval: 60s
+      # scrape_timeout: 1m
+      # metric_relabel_configs: []
+
+    # Scrape kube-state-metrics
+    kubeStateMetrics:
+      enabled: true
+      # scrape_interval: 60s
+      # scrape_timeout: 1m
+      # metric_relabel_configs: []
+
+    # Scrape node-exporter
+    nodeExporter:
+      enabled: true
+      # scrape_interval: 60s
+      # scrape_timeout: 1m
+      # metric_relabel_configs: []
+
+    # Scrape pods with prometheus.io/scrape: true annotation
+    kubernetesPods:
+      enabled: true
+      # scrape_interval: 60s
+      # scrape_timeout: 1m
+      # metric_relabel_configs: []
+
+    # Scrape Beyla eBPF metrics
+    oodleBeyla:
+      enabled: true
+      # scrape_interval: 60s
+      # scrape_timeout: 1m
+      # metric_relabel_configs: []
+
+  # =============================================================================
+  # SCRAPE CONFIGURATION (DEFAULT - used when managedScrapeConfig.enabled: false)
+  # =============================================================================
+  # This is the default scrape configuration used by vmagent.
+  # Customize this section directly if you need to modify scrape jobs without
+  # using the managedScrapeConfig feature.
+  # 
+  # ⚠️  NOTE: This section is IGNORED when managedScrapeConfig.enabled: true
+  # =============================================================================
   config:
     global:
       scrape_interval: 60s
