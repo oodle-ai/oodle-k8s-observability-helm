@@ -602,11 +602,11 @@ vector-aggregator:
         encoding:
           codec: json
         compression: gzip
-        headers:
-          X-OODLE-INSTANCE: "${OODLE_INSTANCE}"
-          X-API-KEY: "${OODLE_API_KEY}"
-          X-OODLE-LOG-SOURCE: "vector"
         request:
+          headers:
+            X-OODLE-INSTANCE: "${OODLE_INSTANCE}"
+            X-API-KEY: "${OODLE_API_KEY}"
+            X-OODLE-LOG-SOURCE: "vector"
           retry_attempts: 3
           timeout_secs: 60
 
