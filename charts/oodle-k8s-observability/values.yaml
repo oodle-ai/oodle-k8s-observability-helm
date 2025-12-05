@@ -511,6 +511,12 @@ vector-agent:
     - effect: NoSchedule
       operator: Exists
 
+  # Add prometheus annotations for self-discovery
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9598"
+    prometheus.io/path: "/metrics"
+
   # Additional filters applied to select which pods to scrape
   # Example: "app.kubernetes.io/name!=kube-state-metrics,app.kubernetes.io/name!=node-exporter"
   label_selectors: ""
@@ -531,6 +537,11 @@ vector-agent:
         max_line_bytes: 1048576 # 1 Mib
         extra_label_selector: "{{ .Values.label_selectors }}"
         extra_namespace_label_selector: "{{ .Values.namespace_label_selectors }}"
+
+      # https://vector.dev/docs/administration/monitoring/
+      internal_metrics:
+        type: internal_metrics
+        scrape_interval_secs: 60
 
     transforms:
       drop_old_logs:
@@ -557,6 +568,12 @@ vector-agent:
           - add_cluster_name
         address: "{{ .Release.Name }}-vector-aggregator:6000"
 
+      # https://vector.dev/docs/reference/configuration/sinks/prometheus_exporter/
+      vector_metrics:
+        type: prometheus_exporter
+        inputs:
+          - internal_metrics
+
 # Configuration for Vector Aggregator  
 vector-aggregator:
   enabled: true
@@ -577,6 +594,12 @@ vector-aggregator:
           name: oodle-k8s-observability-config
           key: oodleLogsHost
 
+  # Add prometheus annotations for self-discovery
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9598"
+    prometheus.io/path: "/metrics"
+
   podLabels:
     # Make sure `vector-agent` collects logs from `vector-aggregator`.
     "vector.dev/exclude": "false"
@@ -592,6 +615,11 @@ vector-aggregator:
       vector:
         address: 0.0.0.0:6000
         type: vector
+
+      # https://vector.dev/docs/administration/monitoring/
+      internal_metrics:
+        type: internal_metrics
+        scrape_interval_secs: 60
     
     sinks:
       oodle:
@@ -608,7 +636,13 @@ vector-aggregator:
             X-API-KEY: "${OODLE_API_KEY}"
             X-OODLE-LOG-SOURCE: "vector"
           retry_attempts: 3
-          timeout_secs: 60
+          timeout_secs: 120
+
+      # https://vector.dev/docs/reference/configuration/sinks/prometheus_exporter/
+      vector_metrics:
+        type: prometheus_exporter
+        inputs:
+          - internal_metrics
 
 # Configuration for Kubernetes Event Exporter
 event-exporter:
