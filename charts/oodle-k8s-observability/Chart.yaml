@@ -2,8 +2,8 @@ apiVersion: v2
 name: oodle-k8s-observability
 description: A Helm chart for Oodle Kubernetes observability stack
 type: application
-version: 1.0.21
-appVersion: "1.0.21"
+version: 1.0.22
+appVersion: "1.0.22"
 home: https://github.com/oodle-ai/oodle-k8s-observability-helm
 sources:
   - https://github.com/oodle-ai/oodle-k8s-observability-helm
