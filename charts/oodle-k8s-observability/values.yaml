@@ -83,7 +83,7 @@ vmagent:
 
   # Persistent volume for each replica to store scrape queue
   persistentVolume:
-    enabled: false  # ← MASTER SWITCH: Set to true to use persistentVolume instead
+    enabled: true  # ← MASTER SWITCH: Set to false to use emptyDir instead
     size: 20Gi
     storageClass: ""
     # Maximum disk usage per remote write URL (set in extraArgs below)
