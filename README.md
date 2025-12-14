@@ -252,7 +252,7 @@ vmagent:
   
   scrapeJobs:
     # API server metrics - scrape less frequently (reduce load)
-    KubernetesApiServers:
+    kubernetesApiServers:
       enabled: true
       scrape_interval: 120s
       scrape_timeout: 90s
@@ -276,7 +276,7 @@ vmagent:
 
 | Job Name | Values Key | Description |
 |----------|------------|-------------|
-| `kubernetes-apiservers` | `scrapeJobs.KubernetesApiServers` | Kubernetes API server metrics |
+| `kubernetes-apiservers` | `scrapeJobs.kubernetesApiServers` | Kubernetes API server metrics |
 | `kubernetes-nodes` | `scrapeJobs.kubernetesNodes` | Kubelet metrics from each node |
 | `kubernetes-nodes-cadvisor` | `scrapeJobs.kubernetesNodesCadvisor` | cAdvisor container metrics |
 | `kube-state-metrics` | `scrapeJobs.kubeStateMetrics` | Kubernetes object state metrics |
@@ -297,7 +297,7 @@ vmagent:
   
   scrapeJobs:
     # Disable API server metrics collection
-    KubernetesApiServers:
+    kubernetesApiServers:
       enabled: false
     
     # Disable cAdvisor metrics (container metrics)
@@ -333,7 +333,7 @@ vmagent:
   
   scrapeJobs:
     # Drop specific metrics from API server
-    KubernetesApiServers:
+    kubernetesApiServers:
       enabled: true
       metric_relabel_configs:
         # Drop histogram bucket metrics (high cardinality)
