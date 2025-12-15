@@ -167,6 +167,15 @@ vmagent:
         configMapKeyRef:
           name: oodle-k8s-observability-config
           key: oodleMetricsHost
+    # Scrape config checksum - triggers pod restart when scrape config changes
+    # This env var only has effect when managedScrapeConfig.enabled is true
+    # The ConfigMap is created by the vmagent-config.yaml template
+    - name: SCRAPE_CONFIG_CHECKSUM
+      valueFrom:
+        configMapKeyRef:
+          name: vmagent-scrape-config-checksum
+          key: checksum
+          optional: true
 
   # Remote write configuration for sending metrics to Oodle
   remoteWrite:
