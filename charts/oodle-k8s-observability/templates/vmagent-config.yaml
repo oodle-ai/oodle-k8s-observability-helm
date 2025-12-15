@@ -13,7 +13,7 @@ data:
       scrape_interval: {{ .Values.vmagent.managedScrapeConfig.scrape_interval }}
       scrape_timeout: {{ .Values.vmagent.managedScrapeConfig.scrape_timeout }}
       external_labels:
-        cluster: "%{CLUSTER_NAME}"
+        {{- toYaml .Values.vmagent.managedScrapeConfig.external_labels | nindent 4 }}
 
     scrape_configs:
       # Note: vmagent scrapes itself via prometheus.io/scrape annotation
