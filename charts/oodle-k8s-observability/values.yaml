@@ -230,6 +230,15 @@ vmagent:
     # Global scrape settings (only used when managedScrapeConfig.enabled: true)
     scrape_interval: 60s
     scrape_timeout: 1m
+    # External labels added to all scraped metrics
+    # The 'cluster' label uses %{CLUSTER_NAME} which is resolved from the ConfigMap
+    # Add additional labels as needed:
+    #   external_labels:
+    #     cluster: "%{CLUSTER_NAME}"
+    #     environment: production
+    #     region: us-west-2
+    external_labels:
+      cluster: "%{CLUSTER_NAME}"
   
   # ⚠️  NOTE:
   # If managedScrapeConfig.enabled is true, then configMap must be set to
