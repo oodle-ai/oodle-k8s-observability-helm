@@ -176,6 +176,10 @@ vmagent:
 
   extraArgs:
     promscrape.suppressDuplicateScrapeTargetErrors: "true"
+    # Check for scrape config changes periodically. When managedScrapeConfig
+    # is used, then periodic config check is required in case any updates
+    # are made to the scrape config.
+    promscrape.configCheckInterval: "5m"
     # Maximum disk space per remote write URL for persistent queue
     # ⚠️  MUST be set to ~85% of your storage size (PersistentVolume or emptyDir)
     # Currently set for: 20Gi storage → 20Gi * 0.85 = 17GB
