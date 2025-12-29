@@ -694,6 +694,8 @@ event-exporter:
 
   config:
     clusterName: "${CLUSTER_NAME}"
+    kubeQPS: 100
+    kubeBurst: 500
     maxEventAgeSeconds: 600
     logLevel: info
     logFormat: json
