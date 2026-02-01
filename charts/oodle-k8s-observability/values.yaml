@@ -85,7 +85,7 @@ vmagent:
   persistentVolume:
     enabled: true  # ← MASTER SWITCH: Set to false to use emptyDir instead
     size: 20Gi
-    storageClass: ""
+    storageClassName: ""
     # Maximum disk usage per remote write URL (set in extraArgs below)
     # Recommended: 85% of PVC size to leave headroom for filesystem overhead
     # Current: 20Gi * 0.85 = 17GB
