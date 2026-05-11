@@ -150,9 +150,7 @@ otelSidecar:
 # This uses the Fluent Bit `es` output plugin, which is one of the
 # AWS-approved outputs for Fargate. No Firehose or CloudWatch needed.
 #
-# Auth: Uses HTTP Basic auth (HTTP_User=Bearer, HTTP_Passwd=<apiKey>) because
-# Fargate's managed Fluent Bit does not support the "Header" directive.
-# The receiving proxy must decode the Basic auth to extract the API key.
+# Auth: Uses HTTP Basic auth (HTTP_User=Bearer, HTTP_Passwd=<apiKey>)
 #
 # Pre-requisites (customer must do before enabling):
 #   1. Fargate Pod Execution Role needs outbound HTTPS access to the Oodle logs host.
