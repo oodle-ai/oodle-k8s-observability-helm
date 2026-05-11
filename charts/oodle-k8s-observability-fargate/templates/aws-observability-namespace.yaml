@@ -1,0 +1,9 @@
+{{- if and .Values.fargateLogging.enabled .Values.fargateLogging.createAwsObservabilityNamespace }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: aws-observability
+  labels:
+    aws-observability: enabled
+    {{- include "oodle-fargate.labels" . | nindent 4 }}
+{{- end }}

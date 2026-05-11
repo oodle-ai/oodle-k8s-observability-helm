@@ -1,0 +1,14 @@
+{{- include "oodle-fargate.validateRequired" . }}
+{{- if .Values.oodleConfig.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: oodle-k8s-observability-fargate-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "oodle-fargate.labels" . | nindent 4 }}
+data:
+  clusterName: {{ .Values.oodleConfig.clusterName | quote }}
+  oodleInstance: {{ .Values.oodleConfig.oodleInstance | quote }}
+  oodleOtlpHost: {{ include "oodle-fargate.otlpHost" . | quote }}
+{{- end }}

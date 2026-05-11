@@ -1,0 +1,153 @@
+{{- if .Values.otelGateway.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "oodle-fargate.gatewayServiceName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "oodle-fargate.gatewayLabels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.otelGateway.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "oodle-fargate.gatewaySelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/otel-gateway-configmap.yaml") . | sha256sum }}
+        {{- with .Values.otelGateway.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "oodle-fargate.gatewaySelectorLabels" . | nindent 8 }}
+        {{- with .Values.otelGateway.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "oodle-fargate.sidecarServiceAccountName" . }}
+      volumes:
+        - name: otel-gateway-config
+          configMap:
+            name: {{ include "oodle-fargate.gatewayServiceName" . }}-config
+      containers:
+        - name: otel-collector
+          image: "{{ .Values.otelGateway.image.repository }}:{{ .Values.otelGateway.image.tag }}"
+          imagePullPolicy: {{ .Values.otelGateway.image.pullPolicy }}
+          command:
+            - /otelcol-contrib
+            - --config=/conf/otel-gateway-config.yaml
+          env:
+            - name: OODLE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.apiKeySecret.name }}
+                  key: {{ .Values.apiKeySecret.key }}
+            - name: OODLE_INSTANCE
+              valueFrom:
+                configMapKeyRef:
+                  name: oodle-k8s-observability-fargate-config
+                  key: oodleInstance
+            - name: OODLE_OTLP_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: oodle-k8s-observability-fargate-config
+                  key: oodleOtlpHost
+            - name: K8S_CLUSTER_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: oodle-k8s-observability-fargate-config
+                  key: clusterName
+            - name: K8S_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: spec.nodeName
+            - name: K8S_POD_IP
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: status.podIP
+            - name: K8S_POD_NAME
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.name
+            - name: K8S_POD_UID
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.uid
+            - name: K8S_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.namespace
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "k8s.cluster.name=$(K8S_CLUSTER_NAME),k8s.node.name=$(K8S_NODE_NAME)"
+            - name: KUBECONFIG
+              value: /conf/kubeconfig
+          ports:
+            - containerPort: {{ .Values.otelGateway.service.otlpGrpcPort }}
+              name: otlp-grpc
+              protocol: TCP
+            - containerPort: {{ .Values.otelGateway.service.otlpHttpPort }}
+              name: otlp-http
+              protocol: TCP
+            - containerPort: 13133
+              name: health-check
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 13133
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 6
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 13133
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 6
+            timeoutSeconds: 5
+          resources:
+            {{- toYaml .Values.otelGateway.resources | nindent 12 }}
+          volumeMounts:
+            - name: otel-gateway-config
+              mountPath: /conf
+      {{- with .Values.otelGateway.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.otelGateway.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.otelGateway.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "oodle-fargate.gatewayServiceName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "oodle-fargate.gatewayLabels" . | nindent 4 }}
+spec:
+  type: {{ .Values.otelGateway.service.type }}
+  selector:
+    {{- include "oodle-fargate.gatewaySelectorLabels" . | nindent 4 }}
+  ports:
+    - name: otlp-grpc
+      port: {{ .Values.otelGateway.service.otlpGrpcPort }}
+      targetPort: otlp-grpc
+      protocol: TCP
+    - name: otlp-http
+      port: {{ .Values.otelGateway.service.otlpHttpPort }}
+      targetPort: otlp-http
+      protocol: TCP
+{{- end }}

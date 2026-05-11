@@ -1,0 +1,103 @@
+🎉 Oodle Kubernetes Observability (Fargate) has been installed successfully!
+
+Components installed:
+{{- if .Values.otelGateway.enabled }}
+✅ OTel Collector Gateway (metrics{{ if .Values.traces.enabled }} + traces{{ end }})
+{{- else }}
+❌ OTel Collector Gateway - Disabled
+{{- end }}
+{{- if .Values.otelGateway.k8sCluster.enabled }}
+✅ k8s_cluster receiver (cluster object metrics via API server)
+{{- else }}
+❌ k8s_cluster receiver - Disabled
+{{- end }}
+{{- if index .Values "event-exporter" "enabled" }}
+✅ Kubernetes Events
+{{- else }}
+❌ Kubernetes Events - Disabled
+{{- end }}
+{{- if .Values.fargateLogging.enabled }}
+✅ Fargate Logging (Fluent Bit -> Oodle)
+{{- else }}
+❌ Fargate Logging - Disabled
+{{- end }}
+
+
+📦 NEXT STEP: Add the OTel sidecar to your Fargate Deployments
+
+Add the following to each Fargate Deployment you want to observe.
+All values below are pre-filled from your Helm release.
+
+1. Set the serviceAccountName and add the config volume:
+
+    spec:
+      template:
+        spec:
+          serviceAccountName: {{ include "oodle-fargate.sidecarServiceAccountName" . }}
+          volumes:
+            - name: otel-sidecar-config
+              configMap:
+                name: {{ include "oodle-fargate.sidecarConfigMapName" . }}
+
+2. Add the sidecar container alongside your app container:
+
+          containers:
+            - name: otel-collector-sidecar
+              image: {{ .Values.otelGateway.image.repository }}:{{ .Values.otelGateway.image.tag }}
+              command: ["/otelcol-contrib", "--config=/conf/otel-sidecar-config.yaml"]
+              env:
+                - name: K8S_CLUSTER_NAME
+                  valueFrom:
+                    configMapKeyRef:
+                      name: oodle-k8s-observability-fargate-config
+                      key: clusterName
+              resources:
+                requests:
+                  cpu: {{ .Values.otelSidecar.resources.requests.cpu }}
+                  memory: {{ .Values.otelSidecar.resources.requests.memory }}
+                limits:
+                  cpu: {{ .Values.otelSidecar.resources.limits.cpu }}
+                  memory: {{ .Values.otelSidecar.resources.limits.memory }}
+              volumeMounts:
+                - name: otel-sidecar-config
+                  mountPath: /conf
+
+3. If your app is instrumented with OpenTelemetry, set the exporter endpoint:
+
+    OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+
+{{- if .Values.fargateLogging.enabled }}
+
+📝 LOGGING: Fargate Fluent Bit -> Oodle
+
+   Host:  {{ include "oodle-fargate.logsHost" . }}
+   Port:  {{ .Values.fargateLogging.es.port }}
+   Index: {{ .Values.fargateLogging.es.index }}
+
+   Logs are sent directly from Fargate's built-in Fluent Bit to Oodle
+   using the `es` output plugin. No Firehose or CloudWatch needed.
+
+   Pre-requisite: Ensure the Fargate Pod Execution Role has outbound
+   HTTPS access to {{ include "oodle-fargate.logsHost" . }}.
+
+   After enabling, restart your Fargate Deployments.
+   You should see a "LoggingEnabled" event on each pod.
+{{- end }}
+
+⚠️  MIXED CLUSTER NOTE
+   If you also run the oodle-k8s-observability chart (EC2) in this cluster,
+   disable shared components to avoid duplicates:
+
+     --set event-exporter.enabled=false
+
+
+🔍 To check the status of your installation:
+
+   helm list -n {{ .Release.Namespace }}
+   kubectl get pods -n {{ .Release.Namespace }}
+
+📚 For more information:
+   - Documentation: https://docs.oodle.ai
+   - GitHub: https://github.com/oodle-ai/oodle-k8s-observability-helm
+
+Happy monitoring! 🚀

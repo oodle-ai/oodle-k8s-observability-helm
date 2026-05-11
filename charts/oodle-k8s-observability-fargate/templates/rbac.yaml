@@ -1,0 +1,47 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "oodle-fargate.fullname" . }}-otel-collector
+  labels:
+    {{- include "oodle-fargate.labels" . | nindent 4 }}
+rules:
+  # kubeletstats: API server proxy to kubelet
+  - apiGroups: ['']
+    resources: ['nodes/stats', 'nodes/proxy']
+    verbs: ['get']
+  # k8sattributes + k8s_cluster: core resources
+  - apiGroups: ['']
+    resources: ['pods', 'namespaces', 'nodes', 'endpoints', 'events', 'services', 'resourcequotas', 'replicationcontrollers']
+    verbs: ['get', 'list', 'watch']
+  # k8s_cluster: apps resources
+  - apiGroups: ['apps']
+    resources: ['replicasets', 'deployments', 'daemonsets', 'statefulsets']
+    verbs: ['get', 'list', 'watch']
+  # k8s_cluster: batch resources
+  - apiGroups: ['batch']
+    resources: ['jobs', 'cronjobs']
+    verbs: ['get', 'list', 'watch']
+  # k8s_cluster: autoscaling
+  - apiGroups: ['autoscaling']
+    resources: ['horizontalpodautoscalers']
+    verbs: ['get', 'list', 'watch']
+---
+{{- $root := . }}
+{{- $namespaces := include "oodle-fargate.sidecarNamespaces" . | fromJsonArray }}
+{{- range $ns := $namespaces }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "oodle-fargate.fullname" $root }}-otel-collector-{{ $ns }}
+  labels:
+    {{- include "oodle-fargate.labels" $root | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "oodle-fargate.fullname" $root }}-otel-collector
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "oodle-fargate.sidecarServiceAccountName" $root }}
+    namespace: {{ $ns }}
+---
+{{- end }}

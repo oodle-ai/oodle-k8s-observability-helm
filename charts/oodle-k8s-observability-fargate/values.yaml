@@ -1,0 +1,257 @@
+# =============================================================================
+# Oodle Kubernetes Observability for EKS Fargate
+# =============================================================================
+#
+# IMPORTANT: Before installing this chart, create a Kubernetes Secret with your Oodle API key:
+#   kubectl create secret generic oodle-api-key --from-literal=apiKey=YOUR_API_KEY
+#
+# The chart expects a secret named 'oodle-api-key' with key 'apiKey' by default.
+
+# =============================================================================
+# OODLE CONFIGURATION
+# =============================================================================
+oodleConfig:
+  enabled: true
+
+  # Cluster name for Kubernetes cluster identification
+  clusterName: ""
+
+  # Oodle instance identifier (e.g., inst-your-instance-id)
+  oodleInstance: ""
+
+  # Oodle OTLP host endpoint (optional)
+  # If not specified, defaults to: https://{oodleInstance}-otlp.collector.oodle.ai
+  oodleOtlpHost: ""
+
+  # Oodle API key
+  # Used by Fargate Fluent Bit logging (rendered in plaintext in the aws-logging
+  # ConfigMap — a known limitation of Fargate's managed log router).
+  # The OTel gateway reads the key from the Kubernetes Secret (apiKeySecret) instead.
+  apiKey: ""
+
+# Secret reference for API key (used by OTel gateway and event-exporter)
+apiKeySecret:
+  name: oodle-api-key
+  key: apiKey
+
+# =============================================================================
+# TARGET NAMESPACES
+# =============================================================================
+# Namespaces where the sidecar ServiceAccount and ConfigMap should be created.
+# If empty, only the release namespace is used.
+# Example: ["app-ns-a", "app-ns-b"]
+targetNamespaces: []
+
+# =============================================================================
+# OTEL COLLECTOR GATEWAY
+# =============================================================================
+# Central OTel Collector Deployment that receives metrics from sidecars
+# and collects kubeletstats. Exports to Oodle via OTLP HTTP.
+otelGateway:
+  enabled: true
+
+  image:
+    repository: otel/opentelemetry-collector-contrib
+    tag: 0.139.0
+    pullPolicy: IfNotPresent
+
+  replicaCount: 1
+
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+  # OTLP export settings
+  export:
+    timeout: 120s
+    retry:
+      enabled: true
+      initialInterval: 2s
+      maxInterval: 45s
+      maxElapsedTime: 12m
+
+  # k8s_cluster receiver settings (cluster-level object metrics from API server)
+  # Collects: deployment replicas, pod phases, node conditions, namespace status,
+  # container restarts, DaemonSet/StatefulSet/ReplicaSet/Job/CronJob/HPA status
+  k8sCluster:
+    enabled: true
+    collectionInterval: 30s
+    nodeConditionsToReport:
+      - Ready
+      - MemoryPressure
+      - DiskPressure
+      - PIDPressure
+    allocatableTypesToReport:
+      - cpu
+      - memory
+      - storage
+
+  # Kubeletstats receiver settings (pod/container/node metrics via API proxy)
+  kubeletstats:
+    enabled: true
+    collectionInterval: 30s
+    metricGroups:
+      - container
+      - pod
+      - node
+      - volume
+
+  # Batch processor settings
+  batch:
+    sendBatchSize: 10000
+    timeout: 200ms
+
+  # Service configuration
+  service:
+    type: ClusterIP
+    otlpGrpcPort: 4317
+    otlpHttpPort: 4318
+
+  # Pod annotations
+  podAnnotations: {}
+
+  # Pod labels
+  podLabels: {}
+
+  # Node selector
+  nodeSelector: {}
+
+  # Tolerations
+  tolerations: []
+
+  # Affinity
+  affinity: {}
+
+# =============================================================================
+# OTEL SIDECAR CONFIGURATION
+# =============================================================================
+# Resource settings for the OTel sidecar container that customers add to
+# their Fargate Deployments. These values are rendered in the NOTES.txt
+# sidecar snippet.
+otelSidecar:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+# =============================================================================
+# FARGATE LOGGING (Fluent Bit -> Elasticsearch bulk API proxy)
+# =============================================================================
+# Configures the AWS-managed Fluent Bit log router on Fargate to send
+# container logs directly to Oodle's ES bulk API proxy endpoint.
+#
+# This uses the Fluent Bit `es` output plugin, which is one of the
+# AWS-approved outputs for Fargate. No Firehose or CloudWatch needed.
+#
+# Auth: Uses HTTP Basic auth (HTTP_User=Bearer, HTTP_Passwd=<apiKey>) because
+# Fargate's managed Fluent Bit does not support the "Header" directive.
+# The receiving proxy must decode the Basic auth to extract the API key.
+#
+# Pre-requisites (customer must do before enabling):
+#   1. Fargate Pod Execution Role needs outbound HTTPS access to the Oodle logs host.
+#   2. Pods must be restarted after enabling — Fargate reads the ConfigMap at schedule time only.
+#
+# Debugging:
+#   To enable Fluent Bit operational logs in CloudWatch:
+#   1. Set fargateLogging.flbLogCw to true
+#   2. Add CloudWatch Logs permissions to the Fargate Pod Execution Role for
+#      log group: <EKS-cluster-name>-fluent-bit-logs (note: no /aws/eks/ prefix)
+#   3. Restart pods, then: aws logs tail <EKS-cluster-name>-fluent-bit-logs --follow --region <region>
+fargateLogging:
+  enabled: false
+
+  # Enable Fluent Bit operational logs to CloudWatch for debugging (default: false)
+  # Requires CloudWatch Logs IAM permissions on the Fargate Pod Execution Role.
+  flbLogCw: false
+
+  # Create the aws-observability namespace (required by Fargate log router)
+  createAwsObservabilityNamespace: true
+
+  # Oodle logs host running the ES bulk API proxy (REQUIRED when enabled)
+  # If not specified, defaults to: {oodleInstance}-logs.collector.oodle.ai
+  oodleLogsHost: ""
+
+  # Elasticsearch output settings
+  es:
+    # Port for the ES endpoint
+    port: "443"
+    # TLS enabled
+    tls: "On"
+    # Suppress the Fluent Bit type prefix
+    suppressTypeName: "On"
+    # Index name for logs
+    index: "oodle-logs"
+
+# =============================================================================
+# TRACES
+# =============================================================================
+# When enabled, the gateway and sidecars accept traces via OTLP.
+# Requires application instrumentation with OpenTelemetry SDKs.
+traces:
+  enabled: false
+
+# =============================================================================
+# KUBERNETES EVENT EXPORTER (subchart)
+# =============================================================================
+# Exports Kubernetes events to Oodle. Disabled by default for metrics-only.
+# Enable when you add logging/events support.
+event-exporter:
+  enabled: false
+
+  image:
+    registry: "public.ecr.aws/oodle-ai"
+    repository: kubernetes-event-exporter
+    tag: 1.7.0-debian-12-r46
+
+  global:
+    security:
+      allowInsecureImages: true
+
+  extraEnvVars:
+    - name: CLUSTER_NAME
+      valueFrom:
+        configMapKeyRef:
+          name: oodle-k8s-observability-fargate-config
+          key: clusterName
+    - name: OODLE_INSTANCE
+      valueFrom:
+        configMapKeyRef:
+          name: oodle-k8s-observability-fargate-config
+          key: oodleInstance
+    - name: OODLE_API_KEY
+      valueFrom:
+        secretKeyRef:
+          name: oodle-api-key
+          key: apiKey
+    - name: OODLE_OTLP_HOST
+      valueFrom:
+        configMapKeyRef:
+          name: oodle-k8s-observability-fargate-config
+          key: oodleOtlpHost
+
+  config:
+    clusterName: "${CLUSTER_NAME}"
+    kubeQPS: 100
+    kubeBurst: 500
+    maxEventAgeSeconds: 600
+    logLevel: info
+    logFormat: json
+    route:
+      routes:
+        - match:
+            - receiver: "oodle"
+    receivers:
+      - name: "oodle"
+        webhook:
+          endpoint: "${OODLE_OTLP_HOST}/v1/logs"
+          headers:
+            X-OODLE-INSTANCE: "${OODLE_INSTANCE}"
+            X-API-KEY: "${OODLE_API_KEY}"
+            X-OODLE-LOG-SOURCE: "event-exporter"

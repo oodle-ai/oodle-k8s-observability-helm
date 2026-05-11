@@ -1,0 +1,77 @@
+{{- $root := . }}
+{{- $namespaces := include "oodle-fargate.sidecarNamespaces" . | fromJsonArray }}
+{{- range $ns := $namespaces }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "oodle-fargate.sidecarConfigMapName" $root }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "oodle-fargate.labels" $root | nindent 4 }}
+data:
+  kubeconfig: |
+    apiVersion: v1
+    kind: Config
+    clusters:
+    - name: in-cluster
+      cluster:
+        server: https://kubernetes.default.svc:443
+        certificate-authority: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+    contexts:
+    - name: in-cluster
+      context: { cluster: in-cluster, user: in-cluster }
+    current-context: in-cluster
+    users:
+    - name: in-cluster
+      user:
+        tokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+
+  otel-sidecar-config.yaml: |
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+            max_recv_msg_size_mib: 4
+          http:
+            endpoint: 0.0.0.0:4318
+
+    processors:
+      batch:
+        send_batch_size: 10000
+        timeout: 200ms
+
+      resource:
+        attributes:
+          - key: k8s.cluster.name
+            value: ${env:K8S_CLUSTER_NAME}
+            action: upsert
+
+    exporters:
+      otlp/gateway:
+        endpoint: {{ include "oodle-fargate.gatewayServiceName" $root }}.{{ $root.Release.Namespace }}.svc.cluster.local:{{ $root.Values.otelGateway.service.otlpGrpcPort }}
+        tls:
+          insecure: true
+
+    service:
+      extensions: [health_check]
+      pipelines:
+        metrics:
+          receivers: [otlp]
+          processors: [resource, batch]
+          exporters: [otlp/gateway]
+        {{- if $root.Values.traces.enabled }}
+        traces:
+          receivers: [otlp]
+          processors: [resource, batch]
+          exporters: [otlp/gateway]
+        {{- end }}
+      telemetry:
+        logs:
+          encoding: json
+{{- end }}
