@@ -1,0 +1,57 @@
+{{/*
+  Fargate Fluent Bit Logging ConfigMap
+  ====================================
+  Debugging operational logs:
+  1. Set flb_log_cw to "true" in this ConfigMap (or via values fargateLogging.debugCloudWatch: true)
+  2. Ensure the Fargate Pod Execution Role has CloudWatch Logs permissions for
+     the log group: <EKS-cluster-name>-fluent-bit-logs (note: no /aws/eks/ prefix)
+  3. Restart the Fargate pods: kubectl rollout restart deployment <name> -n <namespace>
+  4. Tail operational logs: aws logs tail <EKS-cluster-name>-fluent-bit-logs --follow --region <region>
+*/}}
+{{- if .Values.fargateLogging.enabled }}
+{{- if not .Values.oodleConfig.apiKey }}
+  {{- fail "oodleConfig.apiKey is required when fargateLogging is enabled" }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aws-logging
+  namespace: aws-observability
+  labels:
+    {{- include "oodle-fargate.labels" . | nindent 4 }}
+data:
+  flb_log_cw: {{ .Values.fargateLogging.flbLogCw | default false | quote }}
+  filters.conf: |
+    [FILTER]
+        Name parser
+        Match *
+        Key_name log
+        Parser crio
+    [FILTER]
+        Name kubernetes
+        Match kube.*
+        Merge_Log On
+        Keep_Log Off
+        Buffer_Size 0
+        Kube_Meta_Cache_TTL 300s
+        Annotations Off
+        Labels Off
+  output.conf: |
+    [OUTPUT]
+        Name es
+        Match *
+        Host {{ include "oodle-fargate.logsHost" . }}
+        Port {{ .Values.fargateLogging.es.port }}
+        TLS {{ .Values.fargateLogging.es.tls }}
+        Suppress_Type_Name {{ .Values.fargateLogging.es.suppressTypeName }}
+        Index {{ .Values.fargateLogging.es.index }}
+        HTTP_User Bearer
+        HTTP_Passwd {{ .Values.oodleConfig.apiKey }}
+  parsers.conf: |
+    [PARSER]
+        Name crio
+        Format Regex
+        Regex ^(?<time>[^ ]+) (?<stream>stdout|stderr) (?<logtag>P|F) (?<log>.*)$
+        Time_Key    time
+        Time_Format %Y-%m-%dT%H:%M:%S.%L%z
+{{- end }}
