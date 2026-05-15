@@ -5,7 +5,7 @@ metadata:
   labels:
     {{- include "oodle-fargate.labels" . | nindent 4 }}
 rules:
-  # kubeletstats: API server proxy to kubelet
+  # prometheus receiver: API server proxy to kubelet cadvisor
   - apiGroups: ['']
     resources: ['nodes/stats', 'nodes/proxy']
     verbs: ['get']
@@ -26,22 +26,17 @@ rules:
     resources: ['horizontalpodautoscalers']
     verbs: ['get', 'list', 'watch']
 ---
-{{- $root := . }}
-{{- $namespaces := include "oodle-fargate.sidecarNamespaces" . | fromJsonArray }}
-{{- range $ns := $namespaces }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: {{ include "oodle-fargate.fullname" $root }}-otel-collector-{{ $ns }}
+  name: {{ include "oodle-fargate.fullname" . }}-otel-collector-{{ .Release.Namespace }}
   labels:
-    {{- include "oodle-fargate.labels" $root | nindent 4 }}
+    {{- include "oodle-fargate.labels" . | nindent 4 }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: {{ include "oodle-fargate.fullname" $root }}-otel-collector
+  name: {{ include "oodle-fargate.fullname" . }}-otel-collector
 subjects:
   - kind: ServiceAccount
-    name: {{ include "oodle-fargate.sidecarServiceAccountName" $root }}
-    namespace: {{ $ns }}
----
-{{- end }}
+    name: {{ include "oodle-fargate.gatewayServiceAccountName" . }}
+    namespace: {{ .Release.Namespace }}

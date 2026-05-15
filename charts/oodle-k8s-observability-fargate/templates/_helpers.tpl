@@ -85,33 +85,22 @@ If oodleOtlpHost is set, use it. Otherwise derive from oodleInstance.
 Gateway service name
 */}}
 {{- define "oodle-fargate.gatewayServiceName" -}}
+oodle-otel-gateway
+{{- end }}
+
+{{/*
+Gateway service account name
+*/}}
+{{- define "oodle-fargate.gatewayServiceAccountName" -}}
 {{- printf "%s-otel-gateway" (include "oodle-fargate.fullname" .) | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
-Sidecar service account name
+In-cluster OTLP endpoint for the OTel gateway (gRPC).
+Apps set OTEL_EXPORTER_OTLP_ENDPOINT to this value.
 */}}
-{{- define "oodle-fargate.sidecarServiceAccountName" -}}
-{{- printf "%s-otel-sidecar" (include "oodle-fargate.fullname" .) | trunc 63 | trimSuffix "-" }}
-{{- end }}
-
-{{/*
-Sidecar configmap name
-*/}}
-{{- define "oodle-fargate.sidecarConfigMapName" -}}
-{{- printf "%s-otel-sidecar-config" (include "oodle-fargate.fullname" .) | trunc 63 | trimSuffix "-" }}
-{{- end }}
-
-{{/*
-List of namespaces to deploy sidecar resources into.
-Returns targetNamespaces if set, otherwise the release namespace.
-*/}}
-{{- define "oodle-fargate.sidecarNamespaces" -}}
-{{- if .Values.targetNamespaces }}
-{{- .Values.targetNamespaces | toJson }}
-{{- else }}
-{{- list .Release.Namespace | toJson }}
-{{- end }}
+{{- define "oodle-fargate.gatewayOtlpEndpoint" -}}
+{{- printf "http://%s.%s.svc.cluster.local:%v" (include "oodle-fargate.gatewayServiceName" .) .Release.Namespace .Values.otelGateway.service.otlpGrpcPort }}
 {{- end }}
 
 {{/*
