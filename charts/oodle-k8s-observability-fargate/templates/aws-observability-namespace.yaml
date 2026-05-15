@@ -1,13 +1,9 @@
 {{- if .Values.fargateLogging.enabled }}
-{{- if not (lookup "v1" "Namespace" "" "aws-observability") }}
 apiVersion: v1
 kind: Namespace
 metadata:
   name: aws-observability
-  annotations:
-    helm.sh/resource-policy: keep
   labels:
     aws-observability: enabled
     {{- include "oodle-fargate.labels" . | nindent 4 }}
-{{- end }}
 {{- end }}

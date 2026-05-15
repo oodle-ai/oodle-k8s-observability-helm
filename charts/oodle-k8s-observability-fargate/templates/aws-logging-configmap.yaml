@@ -17,8 +17,6 @@ kind: ConfigMap
 metadata:
   name: aws-logging
   namespace: aws-observability
-  annotations:
-    helm.sh/resource-policy: keep
   labels:
     {{- include "oodle-fargate.labels" . | nindent 4 }}
 data:
