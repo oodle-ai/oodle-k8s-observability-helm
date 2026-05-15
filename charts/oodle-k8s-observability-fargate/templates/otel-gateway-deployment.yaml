@@ -24,7 +24,7 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
-      serviceAccountName: {{ include "oodle-fargate.sidecarServiceAccountName" . }}
+      serviceAccountName: {{ include "oodle-fargate.gatewayServiceAccountName" . }}
       volumes:
         - name: otel-gateway-config
           configMap:

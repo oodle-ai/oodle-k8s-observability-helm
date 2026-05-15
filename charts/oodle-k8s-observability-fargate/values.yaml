@@ -35,18 +35,10 @@ apiKeySecret:
   key: apiKey
 
 # =============================================================================
-# TARGET NAMESPACES
-# =============================================================================
-# Namespaces where the sidecar ServiceAccount and ConfigMap should be created.
-# If empty, only the release namespace is used.
-# Example: ["app-ns-a", "app-ns-b"]
-targetNamespaces: []
-
-# =============================================================================
 # OTEL COLLECTOR GATEWAY
 # =============================================================================
-# Central OTel Collector Deployment that receives metrics from sidecars
-# and collects kubeletstats. Exports to Oodle via OTLP HTTP.
+# Central OTel Collector Deployment that scrapes cluster and container
+# metrics from all Fargate nodes. Exports to Oodle via OTLP HTTP.
 otelGateway:
   enabled: true
 
@@ -90,15 +82,13 @@ otelGateway:
       - memory
       - storage
 
-  # Kubeletstats receiver settings (pod/container/node metrics via API proxy)
-  kubeletstats:
+  # Prometheus receiver settings (pod/container metrics via API server proxy)
+  # Scrapes cadvisor metrics from ALL Fargate virtual nodes by routing
+  # through the Kubernetes API server proxy. This replaces kubeletstats
+  # which only scraped the gateway's own node on Fargate.
+  prometheusReceiver:
     enabled: true
-    collectionInterval: 30s
-    metricGroups:
-      - container
-      - pod
-      - node
-      - volume
+    scrapeInterval: 30s
 
   # Batch processor settings
   batch:
@@ -127,21 +117,6 @@ otelGateway:
   affinity: {}
 
 # =============================================================================
-# OTEL SIDECAR CONFIGURATION
-# =============================================================================
-# Resource settings for the OTel sidecar container that customers add to
-# their Fargate Deployments. These values are rendered in the NOTES.txt
-# sidecar snippet.
-otelSidecar:
-  resources:
-    requests:
-      cpu: 50m
-      memory: 64Mi
-    limits:
-      cpu: 200m
-      memory: 128Mi
-
-# =============================================================================
 # FARGATE LOGGING (Fluent Bit -> Elasticsearch bulk API proxy)
 # =============================================================================
 # Configures the AWS-managed Fluent Bit log router on Fargate to send
@@ -163,14 +138,11 @@ otelSidecar:
 #      log group: <EKS-cluster-name>-fluent-bit-logs (note: no /aws/eks/ prefix)
 #   3. Restart pods, then: aws logs tail <EKS-cluster-name>-fluent-bit-logs --follow --region <region>
 fargateLogging:
-  enabled: false
+  enabled: true
 
   # Enable Fluent Bit operational logs to CloudWatch for debugging (default: false)
   # Requires CloudWatch Logs IAM permissions on the Fargate Pod Execution Role.
   flbLogCw: false
-
-  # Create the aws-observability namespace (required by Fargate log router)
-  createAwsObservabilityNamespace: true
 
   # Oodle logs host running the ES bulk API proxy (REQUIRED when enabled)
   # If not specified, defaults to: {oodleInstance}-logs.collector.oodle.ai
@@ -190,10 +162,10 @@ fargateLogging:
 # =============================================================================
 # TRACES
 # =============================================================================
-# When enabled, the gateway and sidecars accept traces via OTLP.
-# Requires application instrumentation with OpenTelemetry SDKs.
+# When enabled, the gateway accepts traces via OTLP and forwards to Oodle.
+# Does not deploy anything extra — just opens the traces pipeline in the gateway.
 traces:
-  enabled: false
+  enabled: true
 
 # =============================================================================
 # KUBERNETES EVENT EXPORTER (subchart)

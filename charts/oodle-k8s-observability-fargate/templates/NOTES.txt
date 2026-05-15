@@ -1,103 +1,94 @@
-🎉 Oodle Kubernetes Observability (Fargate) has been installed successfully!
+Oodle Kubernetes Observability (Fargate) installed successfully!
 
-Components installed:
+=== What's Collecting ===
+
 {{- if .Values.otelGateway.enabled }}
-✅ OTel Collector Gateway (metrics{{ if .Values.traces.enabled }} + traces{{ end }})
+[x] OTel Gateway — cluster metrics{{ if .Values.traces.enabled }} + traces{{ end }}
 {{- else }}
-❌ OTel Collector Gateway - Disabled
+[ ] OTel Gateway — Disabled
 {{- end }}
 {{- if .Values.otelGateway.k8sCluster.enabled }}
-✅ k8s_cluster receiver (cluster object metrics via API server)
+[x] k8s_cluster receiver — deployments, pods, nodes, HPA, jobs
 {{- else }}
-❌ k8s_cluster receiver - Disabled
+[ ] k8s_cluster receiver — Disabled
+{{- end }}
+{{- if .Values.otelGateway.prometheusReceiver.enabled }}
+[x] Prometheus receiver — container/pod CPU, memory, disk, network from ALL Fargate nodes
+{{- else }}
+[ ] Prometheus receiver — Disabled
+{{- end }}
+{{- if .Values.fargateLogging.enabled }}
+[x] Fargate Logging — all container stdout/stderr via Fluent Bit
+{{- else }}
+[ ] Fargate Logging — Disabled (enable with --set fargateLogging.enabled=true)
+{{- end }}
+{{- if .Values.traces.enabled }}
+[x] Traces pipeline — gateway accepts OTLP traces
+{{- else }}
+[ ] Traces pipeline — Disabled (enable with --set traces.enabled=true)
 {{- end }}
 {{- if index .Values "event-exporter" "enabled" }}
-✅ Kubernetes Events
+[x] Kubernetes Events
 {{- else }}
-❌ Kubernetes Events - Disabled
-{{- end }}
-{{- if .Values.fargateLogging.enabled }}
-✅ Fargate Logging (Fluent Bit -> Oodle)
-{{- else }}
-❌ Fargate Logging - Disabled
+[ ] Kubernetes Events — Disabled (enable with --set event-exporter.enabled=true)
 {{- end }}
 
+=== Metrics ===
 
-📦 NEXT STEP: Add the OTel sidecar to your Fargate Deployments
+Metrics are collected automatically. No changes to your workloads needed.
 
-Add the following to each Fargate Deployment you want to observe.
-All values below are pre-filled from your Helm release.
-
-1. Set the serviceAccountName and add the config volume:
-
-    spec:
-      template:
-        spec:
-          serviceAccountName: {{ include "oodle-fargate.sidecarServiceAccountName" . }}
-          volumes:
-            - name: otel-sidecar-config
-              configMap:
-                name: {{ include "oodle-fargate.sidecarConfigMapName" . }}
-
-2. Add the sidecar container alongside your app container:
-
-          containers:
-            - name: otel-collector-sidecar
-              image: {{ .Values.otelGateway.image.repository }}:{{ .Values.otelGateway.image.tag }}
-              command: ["/otelcol-contrib", "--config=/conf/otel-sidecar-config.yaml"]
-              env:
-                - name: K8S_CLUSTER_NAME
-                  valueFrom:
-                    configMapKeyRef:
-                      name: oodle-k8s-observability-fargate-config
-                      key: clusterName
-              resources:
-                requests:
-                  cpu: {{ .Values.otelSidecar.resources.requests.cpu }}
-                  memory: {{ .Values.otelSidecar.resources.requests.memory }}
-                limits:
-                  cpu: {{ .Values.otelSidecar.resources.limits.cpu }}
-                  memory: {{ .Values.otelSidecar.resources.limits.memory }}
-              volumeMounts:
-                - name: otel-sidecar-config
-                  mountPath: /conf
-
-3. If your app is instrumented with OpenTelemetry, set the exporter endpoint:
-
-    OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+  - Cluster-level: deployment replicas, pod phases, node conditions, HPA status
+  - Pod/container: CPU, memory, disk, network for ALL pods across ALL Fargate nodes
+    (scraped via Kubernetes API server proxy to each node's cadvisor)
 
 {{- if .Values.fargateLogging.enabled }}
 
-📝 LOGGING: Fargate Fluent Bit -> Oodle
+=== Logs ===
 
-   Host:  {{ include "oodle-fargate.logsHost" . }}
-   Port:  {{ .Values.fargateLogging.es.port }}
-   Index: {{ .Values.fargateLogging.es.index }}
+Fargate's built-in Fluent Bit sends all container logs to Oodle automatically.
+No sidecars, no DaemonSets — every pod in every namespace is covered.
 
-   Logs are sent directly from Fargate's built-in Fluent Bit to Oodle
-   using the `es` output plugin. No Firehose or CloudWatch needed.
+  Host:  {{ include "oodle-fargate.logsHost" . }}
+  Index: {{ .Values.fargateLogging.es.index }}
 
-   Pre-requisite: Ensure the Fargate Pod Execution Role has outbound
-   HTTPS access to {{ include "oodle-fargate.logsHost" . }}.
+  Pre-requisite: The Fargate Pod Execution Role needs outbound HTTPS
+  access to {{ include "oodle-fargate.logsHost" . }}.
 
-   After enabling, restart your Fargate Deployments.
-   You should see a "LoggingEnabled" event on each pod.
+  Restart existing pods after first install to pick up the log router config.
 {{- end }}
 
-⚠️  MIXED CLUSTER NOTE
-   If you also run the oodle-k8s-observability chart (EC2) in this cluster,
-   disable shared components to avoid duplicates:
+{{- if .Values.traces.enabled }}
 
-     --set event-exporter.enabled=false
+=== Traces (Java Auto-Instrumentation) ===
 
+Gateway OTLP endpoint (for your app env vars):
+  {{ include "oodle-fargate.gatewayOtlpEndpoint" . }}
 
-🔍 To check the status of your installation:
+Step 1: Bake the OTel Java agent into your Docker image (one-time):
 
-   helm list -n {{ .Release.Namespace }}
-   kubectl get pods -n {{ .Release.Namespace }}
+    # Add to your Dockerfile
+    ADD https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/latest/download/opentelemetry-javaagent.jar /opt/opentelemetry-javaagent.jar
+    ENV JAVA_TOOL_OPTIONS="-javaagent:/opt/opentelemetry-javaagent.jar"
 
-📚 For more information:
-   - Documentation: https://docs.oodle.ai
-   - GitHub: https://github.com/oodle-ai/oodle-k8s-observability-helm
+Step 2: Set the gateway endpoint in your Kubernetes Deployment:
 
-Happy monitoring! 🚀
+    env:
+      - name: OTEL_EXPORTER_OTLP_ENDPOINT
+        value: "{{ include "oodle-fargate.gatewayOtlpEndpoint" . }}"
+      - name: OTEL_SERVICE_NAME
+        value: "<your-service-name>"
+
+  No API keys needed in your app — the gateway handles authentication.
+  Works from any namespace. Just set the env vars and deploy.
+{{- end }}
+
+=== Verify ===
+
+  helm list -n {{ .Release.Namespace }}
+  kubectl get pods -n {{ .Release.Namespace }}
+  kubectl logs -n {{ .Release.Namespace }} -l app.kubernetes.io/component=gateway --tail=50
+
+=== Mixed Cluster Note ===
+
+  If you also run oodle-k8s-observability (EC2) in this cluster,
+  disable shared components: --set event-exporter.enabled=false
