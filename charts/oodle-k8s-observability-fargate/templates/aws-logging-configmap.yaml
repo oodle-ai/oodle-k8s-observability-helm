@@ -38,6 +38,10 @@ data:
         Kube_Meta_Cache_TTL 300s
         Annotations Off
         Labels Off
+    [FILTER]
+        Name record_modifier
+        Match *
+        Record cluster {{ .Values.oodleConfig.clusterName }}
   output.conf: |
     [OUTPUT]
         Name es
