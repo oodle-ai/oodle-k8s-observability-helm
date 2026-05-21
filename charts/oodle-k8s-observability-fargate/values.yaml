@@ -220,7 +220,7 @@ event-exporter:
     receivers:
       - name: "oodle"
         webhook:
-          endpoint: "${OODLE_OTLP_HOST}/v1/logs"
+          endpoint: "${OODLE_OTLP_HOST}/ingest/v1/logs"
           headers:
             X-OODLE-INSTANCE: "${OODLE_INSTANCE}"
             X-API-KEY: "${OODLE_API_KEY}"
