@@ -1,0 +1,29 @@
+{{/*
+Guard against re-introducing a duplicate BEYLA_KUBE_CLUSTER_NAME container env entry.
+
+The beyla DaemonSet renders `beyla.env` and `beyla.envValueFrom` into the same
+container env list. This chart sources the cluster name from the
+oodle-k8s-observability-config ConfigMap via `envValueFrom`, so anything that also
+sets it under `env` produces two entries with the same name. Kubernetes keys
+container env by name, and server-side apply (the default in Helm 4) rejects that
+with a message that points at the DaemonSet rather than at the offending value:
+
+  failed to create typed patch object (...): .spec.template.spec.containers[name="beyla"].env:
+  duplicate entries for key [name="BEYLA_KUBE_CLUSTER_NAME"]
+
+Setting it under `env` has had no effect since the chart moved to `envValueFrom`
+(the later entry wins), so failing here loses no functionality and turns a
+confusing apply-time error into an actionable render-time one.
+
+This template intentionally renders no output.
+*/}}
+{{- $ai := index .Values "auto-instrumentation" | default dict }}
+{{- if $ai.enabled }}
+  {{- $env := dig "beyla" "env" dict $ai }}
+  {{- if kindIs "map" $env }}
+    {{- $clusterName := index $env "BEYLA_KUBE_CLUSTER_NAME" }}
+    {{- if ne (kindOf $clusterName) "invalid" }}
+      {{- fail (printf "auto-instrumentation.beyla.env.BEYLA_KUBE_CLUSTER_NAME is set to %q, but this chart already injects BEYLA_KUBE_CLUSTER_NAME from the oodle-k8s-observability-config ConfigMap. Setting both makes the beyla DaemonSet unappliable (duplicate entries for key [name=\"BEYLA_KUBE_CLUSTER_NAME\"]). Remove auto-instrumentation.beyla.env.BEYLA_KUBE_CLUSTER_NAME from your values and set oodleConfig.clusterName instead." $clusterName) }}
+    {{- end }}
+  {{- end }}
+{{- end }}

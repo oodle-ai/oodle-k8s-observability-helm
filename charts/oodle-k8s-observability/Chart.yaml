@@ -2,8 +2,8 @@ apiVersion: v2
 name: oodle-k8s-observability
 description: A Helm chart for Oodle Kubernetes observability stack
 type: application
-version: 1.0.27
-appVersion: "1.0.27"
+version: 1.0.28
+appVersion: "1.0.28"
 home: https://github.com/oodle-ai/oodle-k8s-observability-helm
 sources:
   - https://github.com/oodle-ai/oodle-k8s-observability-helm
@@ -22,8 +22,11 @@ keywords:
   - instrumentation
 
 dependencies:
+  # >= 1.2.21 is required: earlier versions default beyla.env.BEYLA_KUBE_CLUSTER_NAME
+  # to "", which collides with the envValueFrom entry set in values.yaml and makes the
+  # beyla DaemonSet unappliable under server-side apply.
   - name: oodle-k8s-auto-instrumentation
-    version: "^1.0.0"
+    version: "^1.2.21"
     repository: "https://oodle-ai.github.io/helm-charts"
     alias: auto-instrumentation
     condition: auto-instrumentation.enabled

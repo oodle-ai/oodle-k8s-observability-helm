@@ -501,6 +501,19 @@ vmagent:
 auto-instrumentation:
   enabled: true
   beyla:
+    # The cluster name is injected as BEYLA_KUBE_CLUSTER_NAME from the
+    # oodle-k8s-observability-config ConfigMap. Do not also set it under
+    # `beyla.env`: the beyla DaemonSet renders `env` and `envValueFrom` into the
+    # same container env list, and two entries with the same name make the
+    # DaemonSet unappliable under server-side apply (the default in Helm 4).
+    # Set oodleConfig.clusterName instead -- templates/validate-beyla-env.yaml
+    # fails the render if the env key is set.
+    #
+    # This relies on oodle-k8s-auto-instrumentation >= 1.2.21, which dropped its
+    # own empty BEYLA_KUBE_CLUSTER_NAME default. A `null` override here would not
+    # be a substitute: Helm 3 retains such a null instead of deleting the key
+    # (it only deletes one subchart level deep), so it would still render.
+    #
     # Use envValueFrom to reference ConfigMap values
     envValueFrom:
       BEYLA_KUBE_CLUSTER_NAME:
