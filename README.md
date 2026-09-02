@@ -9,7 +9,7 @@ This chart deploys:
 - **kube-state-metrics** - Kubernetes object state metrics
 - **prometheus-node-exporter** - Node-level hardware and OS metrics
 - **vmagent** - Prometheus metrics collection and remote write to Oodle
-- **oodle-k8s-auto-instrumentation** - eBPF-based auto-instrumentation using Beyla
+- **oodle-k8s-auto-instrumentation** - eBPF-based auto-instrumentation using Beyla (opt-in, disabled by default)
 - **vector-agent & vector-aggregator** - Log collection and processing pipeline
 - **kubernetes-event-exporter** - Kubernetes events collection
 
@@ -85,8 +85,9 @@ oodleConfig:
 vmagent:
   enabled: true
 
+# Opt-in: eBPF service graph. Runs a privileged DaemonSet on every node.
 auto-instrumentation:
-  enabled: true
+  enabled: false
 
 vector-agent:
   enabled: true
@@ -170,7 +171,7 @@ vmagent:
   enabled: true
 
 auto-instrumentation:
-  enabled: true
+  enabled: false  # Opt-in, see Component Control
 
 vector-agent:
   enabled: true
@@ -188,7 +189,7 @@ event-exporter:
 
 ### Component Control
 
-Enable or disable components as needed:
+Enable or disable components as needed. The values below are the defaults:
 
 ```yaml
 kube-state-metrics:      # Kubernetes object metrics
@@ -198,7 +199,7 @@ prometheus-node-exporter: # Node-level metrics
 vmagent:                  # Metrics collection and forwarding
   enabled: true
 auto-instrumentation:     # eBPF-based auto-instrumentation
-  enabled: true
+  enabled: false          # Opt-in, see below
 vector-agent:             # Log collection
   enabled: true
 vector-aggregator:        # Log processing and forwarding
@@ -206,6 +207,24 @@ vector-aggregator:        # Log processing and forwarding
 event-exporter:           # Kubernetes events collection
   enabled: true
 ```
+
+#### Service graph (eBPF auto-instrumentation)
+
+`auto-instrumentation` deploys Beyla, which uses eBPF to build the service graph
+automatically, with no application code changes. It is **disabled by default**: it runs a
+privileged DaemonSet on every node and is not required for the metrics, logs, and events
+that make up the rest of the stack.
+
+To enable it:
+
+```yaml
+auto-instrumentation:
+  enabled: true
+```
+
+The cluster name reaches Beyla as `BEYLA_KUBE_CLUSTER_NAME`, sourced from the
+`oodle-k8s-observability-config` ConfigMap. Set it via `oodleConfig.clusterName`; there is
+no need to set `auto-instrumentation.beyla.env.BEYLA_KUBE_CLUSTER_NAME` yourself.
 
 ### Scrape Job Configuration (Opt-in Feature)
 

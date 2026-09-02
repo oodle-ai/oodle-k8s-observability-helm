@@ -1,0 +1,84 @@
+---
+name: Lint and test charts
+# yamllint disable-line rule:truthy
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Helm 4 applies server-side by default, which rejects manifests that
+      # repeat a key in a keyed list (e.g. two container env entries with the
+      # same name). Helm 3 client-side apply silently lets the last one win, so
+      # these checks must run on Helm 4 to be meaningful.
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v4.1.1
+
+      - name: Install PyYAML
+        run: pip install pyyaml
+
+      - name: Self-test the duplicate-env checker
+        run: |
+          # A checker that never fails is worse than no checker. Prove it trips
+          # on a known-bad manifest before trusting it on the real charts.
+          if printf '%s\n' \
+            'apiVersion: apps/v1' \
+            'kind: DaemonSet' \
+            'metadata: {name: bad}' \
+            'spec:' \
+            '  template:' \
+            '    spec:' \
+            '      containers:' \
+            '        - name: c' \
+            '          env:' \
+            '            - {name: DUPE, value: "a"}' \
+            '            - {name: DUPE, value: "b"}' \
+            | python3 hack/check-duplicate-env.py self-test; then
+            echo "::error::checker did not flag a known-duplicate manifest"
+            exit 1
+          fi
+          echo "checker correctly flagged the known-bad fixture"
+
+      - name: Add chart repos
+        run: |
+          helm repo add oodle-ai https://oodle-ai.github.io/helm-charts
+          helm repo add vector https://helm.vector.dev
+          helm repo add victoriametrics https://victoriametrics.github.io/helm-charts
+          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+
+      - name: Lint and render charts
+        run: |
+          set -euo pipefail
+          for chart in charts/*/; do
+            echo "::group::${chart}"
+            helm dependency build "${chart}"
+            helm lint "${chart}" --set oodleConfig.clusterName=ci
+
+            common=(
+              --set oodleConfig.clusterName=ci
+              --set oodleConfig.oodleInstance=ci
+              --set oodleConfig.apiKey=ci-dummy-key
+            )
+
+            # Default values.
+            helm template ci "${chart}" "${common[@]}" > /tmp/default.yaml
+            python3 hack/check-duplicate-env.py "${chart} (defaults)" < /tmp/default.yaml
+
+            # Every optional component on. auto-instrumentation is opt-in, so the
+            # default render does not contain the beyla DaemonSet at all -- and
+            # that DaemonSet is precisely where duplicate env names have bitten us.
+            # Without this pass the check would silently stop covering it.
+            helm template ci "${chart}" "${common[@]}" \
+              --set auto-instrumentation.enabled=true \
+              > /tmp/all-on.yaml
+            python3 hack/check-duplicate-env.py "${chart} (all components)" < /tmp/all-on.yaml
+            echo "::endgroup::"
+          done
