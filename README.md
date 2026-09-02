@@ -226,6 +226,66 @@ The cluster name reaches Beyla as `BEYLA_KUBE_CLUSTER_NAME`, sourced from the
 `oodle-k8s-observability-config` ConfigMap. Set it via `oodleConfig.clusterName`; there is
 no need to set `auto-instrumentation.beyla.env.BEYLA_KUBE_CLUSTER_NAME` yourself.
 
+### Log Metadata Fields
+
+`vector-agent` enriches every log line with Kubernetes metadata under `kubernetes.*`.
+Some of that metadata is unbounded — pod labels and annotations carry pod-template
+hashes, controller revisions, and injected sidecar config — and it is repeated on
+**every** log event. This chart suppresses the noisiest fields by default:
+
+| Field | Default in this chart | Vector's own default |
+|-------|----------------------|----------------------|
+| `kubernetes.pod_labels` | dropped | emitted |
+| `kubernetes.pod_annotations` | dropped | emitted |
+| `kubernetes.pod_ip` | dropped | emitted |
+| `kubernetes.pod_ips` | dropped | emitted |
+| `kubernetes.namespace_labels` | dropped | emitted |
+| `kubernetes.node_labels` | dropped | emitted |
+
+Everything else is still emitted: `pod_name`, `pod_namespace`, `pod_uid`,
+`pod_node_name`, `pod_owner`, `container_name`, `container_id`, `container_image`,
+`container_image_id`, plus the `cluster` label.
+
+#### Re-enabling a dropped field
+
+A field is suppressed by setting it to `""`; to emit it again, set it back to the
+event path you want the metadata written to (Vector's default path is
+`kubernetes.<field>`):
+
+```yaml
+vector-agent:
+  customConfig:
+    sources:
+      kubernetes_logs:
+        pod_annotation_fields:
+          # Re-emit pod labels at kubernetes.pod_labels
+          pod_labels: "kubernetes.pod_labels"
+```
+
+> **⚠️ Do not use `null` to re-enable a field.** Helm does not reliably delete a
+> subchart default this many levels deep, so `pod_labels: null` can leave the key
+> suppressed. Always set the explicit path string.
+
+#### Dropping more fields
+
+The same mechanism suppresses any other field. For example, to also drop the
+container image and pod owner:
+
+```yaml
+vector-agent:
+  customConfig:
+    sources:
+      kubernetes_logs:
+        pod_annotation_fields:
+          container_image: ""
+          container_image_id: ""
+          pod_owner: ""
+```
+
+See the [Vector `kubernetes_logs` source
+reference](https://vector.dev/docs/reference/configuration/sources/kubernetes_logs/)
+for the full field list.
+
 ### Scrape Job Configuration (Opt-in Feature)
 
 > **⚠️ Note:** This is an opt-in feature disabled by default for backwards compatibility.

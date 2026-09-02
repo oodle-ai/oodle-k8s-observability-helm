@@ -82,3 +82,35 @@ jobs:
             python3 hack/check-duplicate-env.py "${chart} (all components)" < /tmp/all-on.yaml
             echo "::endgroup::"
           done
+
+      # Only the main chart ships a vector-agent; the fargate chart collects logs
+      # via Fluent Bit and has no kubernetes_logs source to check.
+      - name: Check high-cardinality log metadata stays suppressed
+        run: |
+          set -euo pipefail
+          chart=charts/oodle-k8s-observability
+
+          # Same argument as the duplicate-env self-test: prove the checker trips
+          # on a render that leaks pod_labels before trusting it on the real chart.
+          if printf '%s\n' \
+            'apiVersion: v1' \
+            'kind: ConfigMap' \
+            'metadata: {name: leaky-vector}' \
+            'data:' \
+            '  vector.yaml: |' \
+            '    sources:' \
+            '      kubernetes_logs:' \
+            '        type: kubernetes_logs' \
+            '        pod_annotation_fields:' \
+            '          pod_labels: kubernetes.pod_labels' \
+            | python3 hack/check-log-metadata-fields.py self-test; then
+            echo "::error::checker did not flag a render that emits pod_labels"
+            exit 1
+          fi
+          echo "checker correctly flagged the known-bad fixture"
+
+          helm template ci "${chart}" \
+            --set oodleConfig.clusterName=ci \
+            --set oodleConfig.oodleInstance=ci \
+            --set oodleConfig.apiKey=ci-dummy-key \
+            | python3 hack/check-log-metadata-fields.py "${chart} (defaults)"

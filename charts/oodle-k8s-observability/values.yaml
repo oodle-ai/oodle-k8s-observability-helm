@@ -568,6 +568,30 @@ vector-agent:
         extra_label_selector: "{{ .Values.label_selectors }}"
         extra_namespace_label_selector: "{{ .Values.namespace_label_selectors }}"
 
+        # Drop the high-cardinality / low-signal metadata Vector attaches to every
+        # log line. Pod labels and annotations in particular are unbounded maps
+        # (checksums, revision hashes, injected sidecar config) that are repeated
+        # on each event and dominate log volume without being queried.
+        #
+        # An empty string suppresses the key; the value is the event path the
+        # metadata would be written to. To re-emit a field, set it back to its
+        # default path -- do NOT set it to `null`, which Helm does not reliably
+        # treat as "delete" this deep inside a subchart's values.
+        # See README "Log Metadata Fields".
+        #
+        # Everything not listed here keeps its default and is still emitted:
+        # pod_name, pod_namespace, pod_uid, pod_node_name, pod_owner,
+        # container_name, container_id, container_image, container_image_id.
+        node_annotation_fields:
+          node_labels: ""
+        namespace_annotation_fields:
+          namespace_labels: ""
+        pod_annotation_fields:
+          pod_labels: ""
+          pod_annotations: ""
+          pod_ip: ""
+          pod_ips: ""
+
       # https://vector.dev/docs/administration/monitoring/
       internal_metrics:
         type: internal_metrics
