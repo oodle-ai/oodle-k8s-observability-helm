@@ -61,13 +61,24 @@ jobs:
             echo "::group::${chart}"
             helm dependency build "${chart}"
             helm lint "${chart}" --set oodleConfig.clusterName=ci
-            # Render with the components that own the most env plumbing turned
-            # on, then assert every container has unique env names.
-            helm template ci "${chart}" \
-              --set oodleConfig.clusterName=ci \
-              --set oodleConfig.oodleInstance=ci \
-              --set oodleConfig.apiKey=ci-dummy-key \
-              > /tmp/rendered.yaml
-            python3 hack/check-duplicate-env.py "${chart}" < /tmp/rendered.yaml
+
+            common=(
+              --set oodleConfig.clusterName=ci
+              --set oodleConfig.oodleInstance=ci
+              --set oodleConfig.apiKey=ci-dummy-key
+            )
+
+            # Default values.
+            helm template ci "${chart}" "${common[@]}" > /tmp/default.yaml
+            python3 hack/check-duplicate-env.py "${chart} (defaults)" < /tmp/default.yaml
+
+            # Every optional component on. auto-instrumentation is opt-in, so the
+            # default render does not contain the beyla DaemonSet at all -- and
+            # that DaemonSet is precisely where duplicate env names have bitten us.
+            # Without this pass the check would silently stop covering it.
+            helm template ci "${chart}" "${common[@]}" \
+              --set auto-instrumentation.enabled=true \
+              > /tmp/all-on.yaml
+            python3 hack/check-duplicate-env.py "${chart} (all components)" < /tmp/all-on.yaml
             echo "::endgroup::"
           done

@@ -498,8 +498,12 @@ vmagent:
             replacement: "1000000"
 
 # Configuration for oodle-k8s-auto-instrumentation chart (using alias: auto-instrumentation)
+#
+# Opt-in: eBPF auto-instrumentation runs a privileged DaemonSet on every node and
+# is only needed for the service graph, so it is not part of the default metrics /
+# logs / events stack. Set `enabled: true` to turn on the service graph.
 auto-instrumentation:
-  enabled: true
+  enabled: false
   beyla:
     # The cluster name is injected as BEYLA_KUBE_CLUSTER_NAME from the
     # oodle-k8s-observability-config ConfigMap. Do not also set it under
