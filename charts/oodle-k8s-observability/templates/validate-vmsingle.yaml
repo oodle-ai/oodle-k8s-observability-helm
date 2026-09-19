@@ -1,0 +1,45 @@
+{{/*
+Guard the two-part wiring of the opt-in local VictoriaMetrics store.
+
+`vmsingle.enabled` only deploys the server. It cannot make vmagent write to it:
+remoteWrite targets come from the vmagent subchart's own values, and a parent
+chart cannot conditionally inject an entry into a subchart's values. So the
+local store has to be wired up in two places, and enabling just the first one
+produces a server that runs, passes health checks, and stays permanently empty
+with nothing in any log to explain why.
+
+Failing at render time turns that silent dead end into an actionable message.
+The same rationale drives the managedScrapeConfig/configMap pairing enforced by
+`oodle-k8s-observability.validateVmagentConfig` in _helpers.tpl.
+
+Note the asymmetry: an entry pointing at a VictoriaMetrics server while
+`vmsingle.enabled` is false is NOT an error. Pointing vmagent at a VM server
+this chart does not manage is a legitimate setup, so only the
+enabled-but-unwired direction is checked.
+
+This template intentionally renders no output.
+*/}}
+{{- $vmsingle := .Values.vmsingle | default dict }}
+{{- if $vmsingle.enabled }}
+  {{- $vmagent := .Values.vmagent | default dict }}
+
+  {{- if not $vmagent.enabled }}
+    {{- fail "vmsingle.enabled is true but vmagent.enabled is false. vmagent is the only component that writes to the local VictoriaMetrics store, so it would receive no data. Either enable vmagent or set vmsingle.enabled to false." }}
+  {{- end }}
+
+  {{- $host := dig "server" "fullnameOverride" "" $vmsingle }}
+  {{- if not $host }}
+    {{- fail "vmsingle.enabled is true but vmsingle.server.fullnameOverride is empty. This chart pins that name so the Service address stays stable across installs and can be referenced from vmagent.remoteWrite. Set vmsingle.server.fullnameOverride (the chart default is 'vmsingle')." }}
+  {{- end }}
+
+  {{- $matched := false }}
+  {{- range $rw := $vmagent.remoteWrite | default list }}
+    {{- if contains $host ($rw.url | toString) }}
+      {{- $matched = true }}
+    {{- end }}
+  {{- end }}
+
+  {{- if not $matched }}
+    {{- fail (printf "vmsingle.enabled is true but no vmagent.remoteWrite entry targets %q, so the local VictoriaMetrics store would be deployed and never written to. Enabling vmsingle deploys the server only; vmagent must be told to write to it as well. Append this entry to vmagent.remoteWrite (keeping the existing Oodle entry first):\n\n  - url: \"http://%s.%s.svc:8428/api/v1/write\"\n    urlRelabelConfig:\n      - action: keep\n        source_labels: [__name__]\n        regex: \"<metrics you want stored locally>\"\n\nSee the README section \"Local VictoriaMetrics Store (Opt-in Feature)\". Note that remoteWrite.maxDiskUsagePerURL in vmagent.extraArgs is enforced per URL, so a second target doubles the worst-case on-disk queue." $host $host .Release.Namespace) }}
+  {{- end }}
+{{- end }}

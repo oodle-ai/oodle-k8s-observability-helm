@@ -169,6 +169,12 @@ vmagent:
           key: oodleMetricsHost
 
   # Remote write configuration for sending metrics to Oodle
+  #
+  # This is a list: append additional entries to dual-write elsewhere. Each
+  # entry gets its own independent queue, so a slow or unreachable target does
+  # not block the others. Per-entry `urlRelabelConfig` filters which series
+  # that target receives. To dual-write to an in-cluster VictoriaMetrics
+  # server, see the `vmsingle` section below.
   remoteWrite:
     - url: "%{OODLE_METRICS_HOST}/v1/prometheus/%{OODLE_INSTANCE}/write"
       headers: "X-API-KEY: %{OODLE_API_KEY}"
@@ -496,6 +502,86 @@ vmagent:
           # Set cardinality limit for beyla oodle metrics
           - target_label: __series_limit__
             replacement: "1000000"
+
+# =============================================================================
+# LOCAL VICTORIAMETRICS STORE (OPT-IN FEATURE)
+# =============================================================================
+# An in-cluster VictoriaMetrics single-node server that vmagent can dual-write
+# to alongside Oodle. Oodle remains the system of record; this is a short-lived
+# local cache for in-cluster consumers that need lower query latency than a
+# remote backend can provide.
+#
+# Primary use case: KEDA autoscaling. KEDA polls its scaler every
+# `pollingInterval` (default 30s), so end-to-end reaction time is bounded by
+# scrape interval + remote write latency + polling interval. Pointing the KEDA
+# Prometheus scaler at this local store — and scraping the relevant targets
+# faster — gets that down to a 10-20s reaction time.
+#
+# ⚠️  IMPORTANT: Two settings are required. Enabling vmsingle only deploys the
+# server; it does NOT make vmagent write to it. You must also append a
+# remoteWrite entry pointing at it (see the example below and the README
+# section "Local VictoriaMetrics Store (Opt-in Feature)"). The chart fails
+# rendering with a descriptive message if you enable one without the other.
+#
+#   vmsingle:
+#     enabled: true
+#   vmagent:
+#     remoteWrite:
+#       - url: "%{OODLE_METRICS_HOST}/v1/prometheus/%{OODLE_INSTANCE}/write"
+#         headers: "X-API-KEY: %{OODLE_API_KEY}"
+#         forcePromProto: true
+#       - url: "http://vmsingle.<namespace>.svc:8428/api/v1/write"
+#         # Selective routing: send only what in-cluster consumers need.
+#         # Without this, the local store receives every scraped series.
+#         urlRelabelConfig:
+#           - action: keep
+#             source_labels: [__name__]
+#             regex: "http_requests_total|nginx_ingress_controller_requests"
+#
+# Note: remoteWrite entries are independent queues. The Oodle entry above has
+# no urlRelabelConfig, so Oodle continues to receive the full metric set
+# regardless of what is routed locally. A slow or unavailable local store does
+# not affect Oodle ingestion.
+#
+# ⚠️  DISK: vmagent's `remoteWrite.maxDiskUsagePerURL` (set in vmagent.extraArgs
+# above) is enforced PER URL, not in total. With two remote write targets the
+# on-disk queue can reach 2x that value. Either halve it or double the vmagent
+# storage — see the README for the sizing table.
+vmsingle:
+  # Master switch. When false, no VictoriaMetrics server is deployed and this
+  # entire section is inert.
+  enabled: false
+
+  server:
+    # Pin the resource name so the Service DNS address is stable and
+    # predictable. Without this the name is derived from the release name,
+    # which would make the remoteWrite URL above differ per install.
+    # Resulting address: http://vmsingle.<namespace>.svc:8428
+    fullnameOverride: vmsingle
+
+    # Retention for the local store. This is a hot cache for autoscaling and
+    # in-cluster queries, not an archive — Oodle holds the durable history.
+    # VictoriaMetrics enforces a 24h minimum.
+    # Units: h(ours), d(ays), w(eeks), y(ears). A bare number means MONTHS.
+    retentionPeriod: 1d
+
+    # Ephemeral storage by default: no PVC to provision, no StorageClass
+    # assumption, and nothing to clean up. Losing the data on restart is
+    # acceptable because consumers only read a recent window.
+    # Switch to a PVC if you need the local store to survive pod restarts.
+    persistentVolume:
+      enabled: false
+
+    emptyDir:
+      sizeLimit: 2Gi
+
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+      requests:
+        cpu: 100m
+        memory: 256Mi
 
 # Configuration for oodle-k8s-auto-instrumentation chart (using alias: auto-instrumentation)
 #

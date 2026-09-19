@@ -206,6 +206,8 @@ vector-aggregator:        # Log processing and forwarding
   enabled: true
 event-exporter:           # Kubernetes events collection
   enabled: true
+vmsingle:                 # In-cluster VictoriaMetrics store
+  enabled: false          # Opt-in, see below
 ```
 
 #### Service graph (eBPF auto-instrumentation)
@@ -225,6 +227,265 @@ auto-instrumentation:
 The cluster name reaches Beyla as `BEYLA_KUBE_CLUSTER_NAME`, sourced from the
 `oodle-k8s-observability-config` ConfigMap. Set it via `oodleConfig.clusterName`; there is
 no need to set `auto-instrumentation.beyla.env.BEYLA_KUBE_CLUSTER_NAME` yourself.
+
+### Local VictoriaMetrics Store (Opt-in Feature)
+
+`vmsingle` deploys an in-cluster VictoriaMetrics single-node server that vmagent
+dual-writes to alongside Oodle. It is **disabled by default**.
+
+Oodle remains the system of record. This is a short-lived local cache for in-cluster
+consumers that need lower query latency than a remote backend can provide, or that must
+keep working during a network partition.
+
+**When you need it:**
+
+- **KEDA autoscaling with a fast reaction time** — the main driver. See the latency
+  budget below.
+- In-cluster controllers or operators that query PromQL on a hot loop.
+- Any in-cluster consumer whose query volume you would rather not send to a remote
+  backend.
+
+**When you don't:** dashboards, alerting, and anything a human looks at. Query Oodle for
+those — it has the full retention and the full metric set.
+
+#### Latency budget: why local helps for KEDA
+
+KEDA's reaction time is the sum of three delays:
+
+| Stage | Controlled by | Typical | Tuned |
+|-------|--------------|---------|-------|
+| Scrape | `scrape_interval` on the relevant job | 60s | 10s |
+| Remote write flush | vmagent `remoteWrite.flushInterval` | 1s | 1s |
+| KEDA poll | `pollingInterval` on the ScaledObject | 30s | 10s |
+| **Total (worst case)** | | **~91s** | **~21s** |
+
+The tuned column is what gets you the 10-20s reaction time. Note that the scrape and poll
+stages dominate — the local store does not by itself make scaling faster. What it buys you
+is a query endpoint that is one network hop away, so a 10s `pollingInterval` stays cheap
+and predictable instead of hammering a remote backend from inside a control loop.
+
+#### Enabling it
+
+**Two settings are required.** Enabling `vmsingle` deploys the server but does **not**
+make vmagent write to it — remote write targets come from the vmagent subchart's own
+values, which a parent chart cannot conditionally extend. You must also append a
+`remoteWrite` entry:
+
+```yaml
+vmsingle:
+  enabled: true
+
+vmagent:
+  remoteWrite:
+    # Keep the existing Oodle entry first
+    - url: "%{OODLE_METRICS_HOST}/v1/prometheus/%{OODLE_INSTANCE}/write"
+      headers: "X-API-KEY: %{OODLE_API_KEY}"
+      forcePromProto: true
+    # Local store
+    - url: "http://vmsingle.<namespace>.svc:8428/api/v1/write"
+```
+
+Replace `<namespace>` with your release namespace. The Service name is pinned to
+`vmsingle` by `vmsingle.server.fullnameOverride` so this address is stable across
+installs.
+
+If you enable one without the other, the chart **fails at render time** with a message
+telling you what to add. That is deliberate: an unwired local store runs, passes health
+checks, and stays permanently empty, with nothing in any log to explain why.
+
+#### Selective routing
+
+Without a filter, the local store receives **every** scraped series, which is almost never
+what you want for a 2Gi ephemeral cache. Use `urlRelabelConfig` on the local entry to keep
+only what in-cluster consumers actually read:
+
+```yaml
+vmagent:
+  remoteWrite:
+    - url: "%{OODLE_METRICS_HOST}/v1/prometheus/%{OODLE_INSTANCE}/write"
+      headers: "X-API-KEY: %{OODLE_API_KEY}"
+      forcePromProto: true
+    - url: "http://vmsingle.<namespace>.svc:8428/api/v1/write"
+      urlRelabelConfig:
+        # Keep only the metrics your scalers query
+        - action: keep
+          source_labels: [__name__]
+          regex: "http_requests_total|nginx_ingress_controller_requests"
+```
+
+`urlRelabelConfig` accepts standard Prometheus relabeling, so you can filter on any label,
+not just `__name__`:
+
+```yaml
+      urlRelabelConfig:
+        # Keep everything from one scrape job
+        - action: keep
+          source_labels: [job]
+          regex: "kubernetes-pods"
+        # ...then narrow to one namespace
+        - action: keep
+          source_labels: [namespace]
+          regex: "production"
+```
+
+**Routing is per target, and the targets are independent.** Each `remoteWrite` entry has
+its own queue and its own filter. The Oodle entry above has no `urlRelabelConfig`, so
+**Oodle keeps receiving the full metric set** regardless of what you route locally. A slow
+or unavailable local store cannot affect Oodle ingestion.
+
+#### Tuning scrape interval for the fast path
+
+Lowering a job's `scrape_interval` affects **both** destinations — there is one scrape
+feeding all remote write targets. Dropping `kubernetesPods` to 10s therefore increases
+your Oodle ingest volume 6x for that job, not just the local store's.
+
+If you only want high resolution locally, add a dedicated fast job instead of speeding up
+an existing one, then route on its `job` label:
+
+```yaml
+vmagent:
+  extraScrapeConfigs:
+    - job_name: keda-fast
+      scrape_interval: 10s
+      kubernetes_sd_configs:
+        - role: pod
+      relabel_configs:
+        # Only pods opted in via annotation
+        - source_labels: [__meta_kubernetes_pod_annotation_oodle_ai_fast_scrape]
+          action: keep
+          regex: "true"
+        - source_labels: [__meta_kubernetes_namespace]
+          target_label: namespace
+        - source_labels: [__meta_kubernetes_pod_name]
+          target_label: pod
+
+  remoteWrite:
+    - url: "%{OODLE_METRICS_HOST}/v1/prometheus/%{OODLE_INSTANCE}/write"
+      headers: "X-API-KEY: %{OODLE_API_KEY}"
+      forcePromProto: true
+      # Optional cost control: drop the 10s series from Oodle, since the
+      # normal 60s jobs already cover these targets at dashboard resolution.
+      urlRelabelConfig:
+        - action: drop
+          source_labels: [job]
+          regex: "keda-fast"
+    - url: "http://vmsingle.<namespace>.svc:8428/api/v1/write"
+      urlRelabelConfig:
+        - action: keep
+          source_labels: [job]
+          regex: "keda-fast"
+```
+
+This gives 10s resolution to KEDA and leaves Oodle ingest unchanged. Drop the Oodle
+`urlRelabelConfig` block if you want the high-resolution series in Oodle too.
+
+Per-job intervals on the built-in jobs are also available when
+`vmagent.managedScrapeConfig.enabled` is true — see
+[Scrape Job Configuration](#scrape-job-configuration-opt-in-feature).
+
+#### ⚠️ Disk sizing: `maxDiskUsagePerURL` is per URL
+
+`vmagent.extraArgs."remoteWrite.maxDiskUsagePerURL"` is enforced **per remote write
+target**, not in total. Adding a second target doubles the worst-case on-disk queue, which
+can overrun vmagent's storage during an outage.
+
+The chart default is `17GB` against `20Gi` of storage (85%). With two targets you must
+either halve the per-URL limit or double the storage:
+
+| vmagent storage | 1 target | 2 targets |
+|----------------|----------|-----------|
+| 20Gi (default) | `17GB` | `8.5GB` |
+| 40Gi | `34GB` | `17GB` |
+| 100Gi | `85GB` | `42GB` |
+
+```yaml
+vmagent:
+  # Option A: keep 20Gi, halve the per-URL budget
+  extraArgs:
+    remoteWrite.maxDiskUsagePerURL: "8.5GB"
+
+  # Option B: keep 17GB per URL, double the storage
+  # persistentVolume:
+  #   size: 40Gi
+```
+
+#### Storage and retention
+
+The local store defaults to ephemeral storage with short retention, because a cache for
+autoscaling only needs a recent window and losing it on restart is harmless:
+
+```yaml
+vmsingle:
+  enabled: true
+  server:
+    retentionPeriod: 1d       # VictoriaMetrics enforces a 24h minimum
+    persistentVolume:
+      enabled: false          # emptyDir; no PVC or StorageClass needed
+    emptyDir:
+      sizeLimit: 2Gi
+```
+
+**`retentionPeriod` units:** `h`, `d`, `w`, `y`. A bare number means **months** — `1` is
+one month, not one day.
+
+Switch to a PVC if the local store must survive pod restarts:
+
+```yaml
+vmsingle:
+  server:
+    retentionPeriod: 7d
+    persistentVolume:
+      enabled: true
+      size: 10Gi
+      storageClassName: ""    # cluster default
+```
+
+#### Pointing KEDA at the local store
+
+```yaml
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: my-app
+spec:
+  scaleTargetRef:
+    name: my-app
+  pollingInterval: 10         # default is 30
+  cooldownPeriod: 60
+  minReplicaCount: 2
+  maxReplicaCount: 20
+  triggers:
+    - type: prometheus
+      metadata:
+        serverAddress: http://vmsingle.<namespace>.svc:8428
+        query: sum(rate(http_requests_total{namespace="production"}[1m]))
+        threshold: "100"
+```
+
+If KEDA runs in a different namespace from this chart, the address is still
+`http://vmsingle.<release-namespace>.svc:8428` — cross-namespace Service DNS resolves
+normally, subject to any NetworkPolicy you have in place.
+
+#### Verifying
+
+```bash
+# The local store should be receiving samples
+kubectl exec -n <namespace> statefulset/vmsingle -- \
+  wget -qO- 'http://localhost:8428/api/v1/query?query=count({__name__=~".%2B"})'
+
+# Confirm both remote write targets are healthy (neither should be erroring)
+kubectl exec -n <namespace> statefulset/<release>-vmagent -- \
+  wget -qO- http://localhost:8429/metrics | grep vmagent_remotewrite_
+
+# Confirm the query KEDA will run returns data
+kubectl exec -n <namespace> statefulset/vmsingle -- \
+  wget -qO- --post-data='query=sum(rate(http_requests_total[1m]))' \
+  http://localhost:8428/api/v1/query
+```
+
+If the local store is empty, check that your `urlRelabelConfig` keep rule actually matches
+— an over-narrow `regex` silently drops everything, which looks identical to a broken
+connection.
 
 ### Log Metadata Fields
 
