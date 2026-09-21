@@ -2,8 +2,8 @@ apiVersion: v2
 name: oodle-k8s-observability
 description: A Helm chart for Oodle Kubernetes observability stack
 type: application
-version: 1.1.0
-appVersion: "1.1.0"
+version: 1.2.0
+appVersion: "1.2.0"
 home: https://github.com/oodle-ai/oodle-k8s-observability-helm
 sources:
   - https://github.com/oodle-ai/oodle-k8s-observability-helm
@@ -50,6 +50,15 @@ dependencies:
     repository: "https://victoriametrics.github.io/helm-charts/"
     alias: vmagent
     condition: vmagent.enabled
+  # Opt-in in-cluster VictoriaMetrics single-node store. Disabled by default.
+  # Enabling it alone changes nothing: vmagent only writes to it once a matching
+  # entry is added to vmagent.remoteWrite. See values.yaml and the README section
+  # "Local VictoriaMetrics Store (Opt-in Feature)".
+  - name: victoria-metrics-single
+    version: "^0.47.0"
+    repository: "https://victoriametrics.github.io/helm-charts/"
+    alias: vmsingle
+    condition: vmsingle.enabled
   - name: kube-state-metrics
     version: "^5.0.0"
     repository: "https://prometheus-community.github.io/helm-charts"
