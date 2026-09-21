@@ -511,11 +511,13 @@ vmagent:
 # local cache for in-cluster consumers that need lower query latency than a
 # remote backend can provide.
 #
-# Primary use case: KEDA autoscaling. KEDA polls its scaler every
-# `pollingInterval` (default 30s), so end-to-end reaction time is bounded by
-# scrape interval + remote write latency + polling interval. Pointing the KEDA
-# Prometheus scaler at this local store — and scraping the relevant targets
-# faster — gets that down to a 10-20s reaction time.
+# Primary use case: KEDA autoscaling. End-to-end reaction time is bounded by
+# scrape interval + remote write latency + query staleness + the interval at
+# which the scaler is re-read. Pointing the KEDA Prometheus scaler at this
+# local store — and scraping the relevant targets faster — gets that down to
+# a 20-30s reaction time. See the README for the full latency budget; each
+# stage has a different owner and missing one of them caps how fast the whole
+# path can react.
 #
 # ⚠️  IMPORTANT: Two settings are required. Enabling vmsingle only deploys the
 # server; it does NOT make vmagent write to it. You must also append a
