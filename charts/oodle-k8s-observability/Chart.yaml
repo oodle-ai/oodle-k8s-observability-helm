@@ -55,7 +55,7 @@ dependencies:
   # entry is added to vmagent.remoteWrite. See values.yaml and the README section
   # "Local VictoriaMetrics Store (Opt-in Feature)".
   - name: victoria-metrics-single
-    version: "^0.46.0"
+    version: "^0.47.0"
     repository: "https://victoriametrics.github.io/helm-charts/"
     alias: vmsingle
     condition: vmsingle.enabled
