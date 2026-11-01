@@ -177,7 +177,7 @@ vmagent:
   # server, see the `vmsingle` section below.
   remoteWrite:
     - url: "%{OODLE_METRICS_HOST}/v1/prometheus/%{OODLE_INSTANCE}/write"
-      headers: "X-API-KEY: %{OODLE_API_KEY}"
+      bearerToken: "%{OODLE_API_KEY}"
       forcePromProto: true
 
   extraArgs:
@@ -530,7 +530,7 @@ vmagent:
 #   vmagent:
 #     remoteWrite:
 #       - url: "%{OODLE_METRICS_HOST}/v1/prometheus/%{OODLE_INSTANCE}/write"
-#         headers: "X-API-KEY: %{OODLE_API_KEY}"
+#         bearerToken: "%{OODLE_API_KEY}"
 #         forcePromProto: true
 #       - url: "http://vmsingle.<namespace>.svc:8428/api/v1/write"
 #         # Selective routing: send only what in-cluster consumers need.
