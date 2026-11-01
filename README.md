@@ -319,7 +319,7 @@ vmagent:
   remoteWrite:
     # Keep the existing Oodle entry first
     - url: "%{OODLE_METRICS_HOST}/v1/prometheus/%{OODLE_INSTANCE}/write"
-      headers: "X-API-KEY: %{OODLE_API_KEY}"
+      bearerToken: "%{OODLE_API_KEY}"
       forcePromProto: true
     # Local store
     - url: "http://vmsingle.<namespace>.svc:8428/api/v1/write"
@@ -345,7 +345,7 @@ only what in-cluster consumers actually read:
 vmagent:
   remoteWrite:
     - url: "%{OODLE_METRICS_HOST}/v1/prometheus/%{OODLE_INSTANCE}/write"
-      headers: "X-API-KEY: %{OODLE_API_KEY}"
+      bearerToken: "%{OODLE_API_KEY}"
       forcePromProto: true
     - url: "http://vmsingle.<namespace>.svc:8428/api/v1/write"
       urlRelabelConfig:
@@ -403,7 +403,7 @@ vmagent:
 
   remoteWrite:
     - url: "%{OODLE_METRICS_HOST}/v1/prometheus/%{OODLE_INSTANCE}/write"
-      headers: "X-API-KEY: %{OODLE_API_KEY}"
+      bearerToken: "%{OODLE_API_KEY}"
       forcePromProto: true
       # Optional cost control: drop the 10s series from Oodle, since the
       # normal 60s jobs already cover these targets at dashboard resolution.
