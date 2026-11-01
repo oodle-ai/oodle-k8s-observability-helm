@@ -175,12 +175,6 @@ vmagent:
   # not block the others. Per-entry `urlRelabelConfig` filters which series
   # that target receives. To dual-write to an in-cluster VictoriaMetrics
   # server, see the `vmsingle` section below.
-  #
-  # The API key goes in `bearerToken` and not in `headers`. vmagent hides the
-  # value of -remoteWrite.bearerToken in its startup log and in its `flag`
-  # metric. vmagent versions that this chart uses show the value of
-  # -remoteWrite.headers in both places, and this chart sends both to Oodle,
-  # so each user who can read the logs or the metrics could read the key.
   remoteWrite:
     - url: "%{OODLE_METRICS_HOST}/v1/prometheus/%{OODLE_INSTANCE}/write"
       bearerToken: "%{OODLE_API_KEY}"
