@@ -612,6 +612,48 @@ See the [Vector `kubernetes_logs` source
 reference](https://vector.dev/docs/reference/configuration/sources/kubernetes_logs/)
 for the full field list.
 
+### Kubernetes Event Enrichment
+
+For each Kubernetes event, `event-exporter` reads the involved object (for
+example, the pod) from the Kubernetes API. It adds the object's labels,
+annotations and owner references to the event, under `involvedObject`.
+
+Before each object read that its cache cannot serve, the exporter does a full
+API discovery: `GET /api`, `GET /apis`, and one `GET /apis/<group>/<version>`
+for each API group in the cluster. On a cluster with many API groups and many
+events, these discovery requests can be most of the exporter's API traffic. On
+EKS, the control-plane audit log records each request, and that log is billed
+per GB.
+
+To stop these reads, set `omitLookup`:
+
+```yaml
+event-exporter:
+  config:
+    omitLookup: true
+```
+
+With `omitLookup: true`, the exporter sends no discovery requests and no object
+reads. Events keep their message, reason, type, count, timestamps, source node,
+and the involved object's kind, name, namespace and UID. Events lose these
+`involvedObject` fields:
+
+| Field | `omitLookup: false` (default) | `omitLookup: true` |
+|-------|-------------------------------|--------------------|
+| `involvedObject.labels` | emitted | dropped |
+| `involvedObject.annotations` | emitted | dropped |
+| `involvedObject.ownerReferences` | emitted | dropped |
+| `involvedObject.deleted` | set when the object is gone | always `false` |
+
+Oodle shows `involvedObject.labels` and `involvedObject.annotations` as
+`pod_labels` and `pod_annotations` on Kubernetes events. With `omitLookup: true`,
+these fields are empty.
+
+The exporter does not document `omitLookup`, but it reads the key from its
+config file
+([`pkg/exporter/config.go`](https://github.com/resmoio/kubernetes-event-exporter/blob/v1.7/pkg/exporter/config.go#L36)),
+and the Bitnami subchart writes every `event-exporter.config` key to that file.
+
 ### Scrape Job Configuration (Opt-in Feature)
 
 > **⚠️ Note:** This is an opt-in feature disabled by default for backwards compatibility.
