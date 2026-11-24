@@ -826,6 +826,15 @@ event-exporter:
     kubeQPS: 100
     kubeBurst: 500
     maxEventAgeSeconds: 600
+    # For each event, the exporter reads the involved object from the
+    # Kubernetes API to add its labels, annotations and owner references.
+    # The exporter does a full API discovery before each object read that its
+    # cache cannot serve. On EKS, the control-plane audit log records each of
+    # these requests, and that log is billed per GB. Set to true to stop all of
+    # these reads. Events then have no involvedObject labels, annotations,
+    # ownerReferences or deleted flag. See "Kubernetes Event Enrichment" in
+    # the README.
+    omitLookup: false
     logLevel: info
     logFormat: json
     route:
